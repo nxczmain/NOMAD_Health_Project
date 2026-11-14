@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>NETIN</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="engine.js"></script>
+  <script defer src="assistant.js"></script>
+  <script defer src="check-in.js"></script>
+  <script defer src="crew-camera.js"></script>
+  <script defer src="motor.js"></script>
+  <script defer src="crew-profiles.js"></script>
+  <script defer src="workspace.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Ir al contenido</a>
+  <aside class="sidebar" id="sidebar" hidden>
+    <div class="sidebar-crew" id="sidebar-crew"></div>
+    <nav id="nav" aria-label="Secciones"></nav>
+    <nav id="utilities" aria-label="Documentos y ajustes"></nav>
+  </aside>
+  <div class="layout">
+    <header class="mast">
+      <strong class="brand">NETIN</strong>
+      <div id="crew-controls" hidden>
+        <button type="button" class="stage-switch" data-action="stage-menu">Etapa <span id="environment"></span></button>
+      </div>
+    </header>
+    <main id="main" tabindex="-1"></main>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <dialog id="modal"></dialog>
+</body>
+</html>
