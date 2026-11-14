@@ -17,7 +17,7 @@ using Microsoft.Web.WebView2.WinForms;
 internal static class Program
 {
     [STAThread]
-    private static void Main()
+    private static void Main(string[] args)
     {
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
@@ -34,7 +34,7 @@ internal static class Program
 
             try
             {
-                Application.Run(new MissionWindow());
+                Application.Run(new MissionWindow(Array.IndexOf(args, "--reset-crew") >= 0));
             }
             catch (Exception error)
             {
@@ -52,12 +52,14 @@ internal sealed class MissionWindow : Form
     private readonly WebView2 view;
     private readonly Label status;
     private readonly LocalAi localAi = new LocalAi();
+    private readonly bool resetCrew;
     private SpeechSynthesizer speech;
     private Prompt activeSpeech;
     private int speechRequest;
 
-    internal MissionWindow()
+    internal MissionWindow(bool resetCrew)
     {
+        this.resetCrew = resetCrew;
         Text = "NETIN";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(520, 530);
@@ -149,7 +151,7 @@ internal sealed class MissionWindow : Form
                     args.ProcessFailedKind == CoreWebView2ProcessFailedKind.RenderProcessExited)
                     ShowStatus("The workstation closed unexpectedly. Restart NETIN.");
             };
-            core.Navigate(StartPage);
+            core.Navigate(resetCrew ? StartPage + "?reset-crew=1" : StartPage);
         }
         catch (WebView2RuntimeNotFoundException)
         {

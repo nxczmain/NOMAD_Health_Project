@@ -1,3 +1,5 @@
+param([switch]$RestablecerAstronautas)
+
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 $ollama = Join-Path $root 'Ollama\ollama.exe'
@@ -25,7 +27,9 @@ try {
         Start-Sleep -Milliseconds 250
     }
     if (!$ready) { throw 'Ollama no encontro el modelo qwen3:4b en la USB.' }
-    $appProcess = Start-Process -FilePath $app -WorkingDirectory $root -PassThru
+    $launch = @{ FilePath = $app; WorkingDirectory = $root; PassThru = $true }
+    if ($RestablecerAstronautas) { $launch.ArgumentList = '--reset-crew' }
+    $appProcess = Start-Process @launch
     $opened = !$appProcess.WaitForExit(6000)
     $appProcess.WaitForExit()
     if ($opened -and $appProcess.ExitCode -eq 0) {

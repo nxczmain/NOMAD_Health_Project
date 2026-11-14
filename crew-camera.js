@@ -36,6 +36,16 @@ const CrewCamera = (() => {
     });
   }
 
+  async function clearPhotos() {
+    const db = await open();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(storeName, 'readwrite');
+      transaction.oncomplete = resolve;
+      transaction.onabort = () => reject(transaction.error);
+      transaction.objectStore(storeName).clear();
+    });
+  }
+
   async function save(photo, replace = false) {
     const db = await open();
     return new Promise((resolve, reject) => {
@@ -108,5 +118,5 @@ const CrewCamera = (() => {
     return error.message || 'The camera could not take a photo.';
   }
 
-  return {photos, latest, save, capture, message};
+  return {photos, latest, clearPhotos, save, capture, message};
 })();

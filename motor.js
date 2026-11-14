@@ -42,9 +42,9 @@ const NetinMotor = (() => {
     return event.isPrimary && event.button === 0 && Object.hasOwn(inputs,event.pointerType);
   }
 
-  function demoHistory(records) {
+  function demoHistory(records, includeToday = false) {
     const today = AstraEngine.dateKey();
-    return records.filter(day => day.date < today && day.sample).map((day,index) => {
+    return records.filter(day => day.sample && (day.date < today || includeToday && day.date === today)).map((day,index) => {
       const lunar = day.env === 'moon';
       const slowed = day.values.impact === 'mild' || day.values.sleep < 6;
       return {date:day.date,env:day.env,input:'mouse',hand:'right',layout:'demo',sample:true,early:index % 9 === 0 ? 1 : 0,

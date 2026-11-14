@@ -2,7 +2,8 @@
 param(
     [string]$InstallRoot = 'E:\NETIN',
     [string]$MarkdownFolder = 'E:\Markdown - MarkItDown-20261114T212310Z-1-001\Markdown - MarkItDown',
-    [string]$AppFolder
+    [string]$AppFolder,
+    [switch]$RestablecerAstronautas
 )
 
 $ErrorActionPreference = 'Stop'
@@ -19,10 +20,9 @@ function Get-Sha256([string]$Path) {
 }
 
 $install = Get-Item -LiteralPath $InstallRoot
-$source = Get-Item -LiteralPath $MarkdownFolder
 $app = Get-Item -LiteralPath $AppFolder
-if (!$install.PSIsContainer -or !$source.PSIsContainer -or !$app.PSIsContainer) {
-    throw 'Indica las carpetas de NETIN, Markdown y la compilacion.'
+if (!$install.PSIsContainer -or !$app.PSIsContainer) {
+    throw 'Indica las carpetas de NETIN y la compilacion.'
 }
 if (!(Test-Path -LiteralPath (Join-Path $install.FullName 'NETIN-Portable.flag') -PathType Leaf)) {
     throw 'La carpeta de destino debe ser una instalacion portable de NETIN.'
@@ -33,13 +33,38 @@ foreach ($file in $appFiles + @($interfaceFiles | ForEach-Object { "interface\$_
     if (!(Test-Path -LiteralPath (Join-Path $app.FullName $file) -PathType Leaf)) { throw "Falta $file en la compilacion." }
 }
 if (Get-Process -Name NETIN -ErrorAction SilentlyContinue) { throw 'Cierra la ventana de NETIN antes de actualizar.' }
+$ui = Join-Path $install.FullName 'interface'
+foreach ($folder in @($ui,(Join-Path $ui 'assets'))) {
+    if (Test-Path -LiteralPath $folder) {
+        if ((Get-Item -LiteralPath $folder).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+            throw "Redireccion inesperada: $folder"
+        }
+    } else { New-Item -ItemType Directory -Path $folder | Out-Null }
+}
+
+function Install-AppFiles {
+    foreach ($file in $interfaceFiles) { Copy-Item -LiteralPath (Join-Path $app.FullName "interface\$file") -Destination (Join-Path $ui $file) -Force }
+    foreach ($file in $appFiles) { Copy-Item -LiteralPath (Join-Path $app.FullName $file) -Destination $install.FullName -Force }
+    foreach ($file in @('Start-NETIN.ps1','Abrir-NETIN.cmd')) {
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $install.FullName -Force
+    }
+}
+
+if ($RestablecerAstronautas) {
+    Install-AppFiles
+    Write-Host 'Abriendo NETIN para restablecer los astronautas.'
+    & (Join-Path $install.FullName 'Start-NETIN.ps1') -RestablecerAstronautas
+    return
+}
+
+$source = Get-Item -LiteralPath $MarkdownFolder
+if (!$source.PSIsContainer) { throw 'Indica una carpeta Markdown.' }
 $markdown = @(Get-ChildItem -LiteralPath $source.FullName -Recurse -File | Where-Object { $_.Extension -in '.md','.markdown' } | Sort-Object FullName)
 if (!$markdown.Count) { throw 'La carpeta indicada no contiene Markdown.' }
 
-$ui = Join-Path $install.FullName 'interface'
 $knowledge = Join-Path $ui 'knowledge'
 $files = Join-Path $knowledge 'files'
-foreach ($folder in @($ui,$knowledge,$files,(Join-Path $ui 'assets'))) {
+foreach ($folder in @($knowledge,$files)) {
     if (Test-Path -LiteralPath $folder) {
         $item = Get-Item -LiteralPath $folder
         if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Redireccion inesperada: $folder" }
@@ -77,11 +102,7 @@ if (Test-Path -LiteralPath $manifest -PathType Leaf) {
     catch { Move-Item -LiteralPath $oldIndex -Destination $manifest; throw }
     Remove-Item -LiteralPath $oldIndex
 } else { Move-Item -LiteralPath $nextIndex -Destination $manifest }
-foreach ($file in $interfaceFiles) { Copy-Item -LiteralPath (Join-Path $app.FullName "interface\$file") -Destination (Join-Path $ui $file) -Force }
-foreach ($file in $appFiles) { Copy-Item -LiteralPath (Join-Path $app.FullName $file) -Destination $install.FullName -Force }
-foreach ($file in @('Start-NETIN.ps1','Abrir-NETIN.cmd')) {
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $install.FullName -Force
-}
+Install-AppFiles
 
 $legacy = Join-Path $ui 'mission-sources'
 if (Test-Path -LiteralPath $legacy -PathType Container) {

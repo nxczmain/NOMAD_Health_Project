@@ -52,6 +52,7 @@ let motorRound;
 let motorResult;
 let motorMessage = '';
 let motorGame = 'dock';
+let rosterReset = false;
 
 function readCrew(key) {
   const previous = JSON.parse(localStorage.getItem(key));
@@ -72,12 +73,15 @@ function readCrew(key) {
   throw new Error('The crew profile could not be read.');
 }
 
-try {
-  if (localStorage.getItem(legacyCrew)) crewKeys.unshift(legacyCrew);
-  const roster = JSON.parse(localStorage.getItem(rosterKey));
-  readAloud = localStorage.getItem('netin-read-aloud') !== 'off';
-  if (Array.isArray(roster)) crewKeys.splice(crewKeys.length - CrewProfiles.demoKeys.length,0,...new Set(roster.filter(isCrewKey)));
-} catch { storageError = true; }
+async function resetCrewData() {
+  const keys = Array.from({length:localStorage.length},(_,index) => localStorage.key(index));
+  const examples = CrewProfiles.demoKeys.map(key => [key,JSON.stringify(CrewProfiles.demoState(key))]);
+  await CrewCamera.clearPhotos();
+  for (const key of keys) {
+    if (key === legacyCrew || key === rosterKey || isCrewKey(key) || CrewProfiles.isDemo(key)) localStorage.removeItem(key);
+  }
+  for (const [key,profile] of examples) localStorage.setItem(key,profile);
+}
 
 function notify(message) {
   clearTimeout(toastTimer);
@@ -117,6 +121,7 @@ function home() {
     }
   }).join('');
   return '<section class="crew-home"><div class="crew-picker"><h1>Elige tu perfil</h1><p class="muted">Selecciona la etapa de misión y el astronauta.</p>'+
+    (rosterReset ? '<p class="notice" role="status">Perfiles restablecidos. Cada astronauta de prueba tiene 30 días de datos.</p>' : '')+
     stageField('login-stage',stageChoice)+'<div class="crew-options">'+cards+'</div>'+button('Crear perfil','new-profile')+'</div></section>';
 }
 
@@ -1163,12 +1168,32 @@ window.addEventListener('pagehide', () => cameraScreen?.controller.abort());
 $('modal').addEventListener('close', event => {
   if (!event.target.open) event.target.replaceChildren();
 });
-showRoute('home');
-if (!crewKeys.includes(legacyCrew)) {
-  CrewCamera.latest(legacyCrew).then(photo => {
-    if (!photo) return;
-    crewKeys.unshift(legacyCrew);
-    if (!session) render();
-  }).catch(() => {});
+async function start() {
+  if (new URLSearchParams(location.search).get('reset-crew') === '1') {
+    $('main').textContent = 'Restableciendo los perfiles…';
+    try {
+      await resetCrewData();
+      history.replaceState(null,'',location.pathname);
+      rosterReset = true;
+    } catch {
+      $('main').textContent = 'No se pudo completar el restablecimiento. Cierra NETIN y vuelve a ejecutar el actualizador.';
+      return;
+    }
+  }
+  try {
+    if (localStorage.getItem(legacyCrew)) crewKeys.unshift(legacyCrew);
+    const roster = JSON.parse(localStorage.getItem(rosterKey));
+    readAloud = localStorage.getItem('netin-read-aloud') !== 'off';
+    if (Array.isArray(roster)) crewKeys.splice(crewKeys.length - CrewProfiles.demoKeys.length,0,...new Set(roster.filter(isCrewKey)));
+  } catch { storageError = true; }
+  showRoute('home');
+  if (!rosterReset && !crewKeys.includes(legacyCrew)) {
+    CrewCamera.latest(legacyCrew).then(photo => {
+      if (!photo) return;
+      crewKeys.unshift(legacyCrew);
+      if (!session) render();
+    }).catch(() => {});
+  }
+  void loadMarkdown();
 }
-void loadMarkdown();
+void start();
