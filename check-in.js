@@ -141,7 +141,7 @@
   }
 
   function emergencyReport(text) {
-    return /\b(?:i (?:can(?:not|[’']t) breathe|am having (?:chest pain|trouble breathing)|just (?:fainted|passed out)|(?:want|plan) to (?:kill myself|end my life))|no puedo respirar|me acabo de desmayar|(?:quiero|voy a) (?:suicidarme|quitarme la vida))\b/i.test(text);
+    return /\b(?:i (?:can(?:not|['’]t) breathe|(?:am having|have) (?:chest pain|trouble breathing)|just (?:fainted|passed out)|(?:want|plan) to (?:kill myself|end my life))|no puedo respirar|(?<!\bno\s)(?:tengo (?:dolor (?:en el|de) pecho|dificultad para respirar)|me (?:duele el pecho|acabo de desmayar)|(?:quiero|voy a) (?:suicidarme|quitarme la vida)))\b/i.test(text);
   }
 
   function embeddedReadings(text) {

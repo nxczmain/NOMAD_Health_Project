@@ -133,7 +133,7 @@ function trendView() {
 }
 
 function bodyStatus(record) {
-  if (!record || record.symptom === 'resolved') return '';
+  if (!record || !record.intensity || record.symptom === 'resolved') return '';
   return record.intensity >= 7 ? 'strong' : record.intensity >= 4 ? 'medium' : 'low';
 }
 
