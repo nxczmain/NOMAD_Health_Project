@@ -2,10 +2,22 @@
 param(
     [string]$InstallRoot = 'E:\NETIN',
     [string]$MarkdownFolder = 'E:\Markdown - MarkItDown-20261114T212310Z-1-001\Markdown - MarkItDown',
-    [string]$AppFolder = (Join-Path $PSScriptRoot 'App')
+    [string]$AppFolder
 )
 
 $ErrorActionPreference = 'Stop'
+if (!$AppFolder) { $AppFolder = Join-Path $PSScriptRoot 'App' }
+
+function Get-Sha256([string]$Path) {
+    $hash = [Security.Cryptography.SHA256]::Create()
+    try {
+        $stream = [IO.File]::OpenRead($Path)
+        try {
+            return ([BitConverter]::ToString($hash.ComputeHash($stream))).Replace('-','').ToLowerInvariant()
+        } finally { $stream.Dispose() }
+    } finally { $hash.Dispose() }
+}
+
 $install = Get-Item -LiteralPath $InstallRoot
 $source = Get-Item -LiteralPath $MarkdownFolder
 $app = Get-Item -LiteralPath $AppFolder
@@ -38,13 +50,13 @@ $utf8 = New-Object Text.UTF8Encoding($false)
 $prefix = $source.FullName.TrimEnd('\') + '\'
 $entries = foreach ($file in $markdown) {
     $relative = $file.FullName.Substring($prefix.Length).Replace('\','/')
-    $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    $hash = Get-Sha256 $file.FullName
     $destination = Join-Path $files "$hash.md"
     if (!(Test-Path -LiteralPath $destination -PathType Leaf) -or
-        (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash -ne $hash) {
+        (Get-Sha256 $destination) -ne $hash) {
         Copy-Item -LiteralPath $file.FullName -Destination $destination -Force
     }
-    if ((Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash -ne $hash) {
+    if ((Get-Sha256 $destination) -ne $hash) {
         throw "El archivo cambio durante la copia: $relative"
     }
     @{path=$relative; hash=$hash}
