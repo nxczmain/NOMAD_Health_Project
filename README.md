@@ -53,8 +53,12 @@ NETIN runs in a WinForms shell with WebView2. It matches questions to local Mark
 | [docs](docs/) | Installation and evaluation guide, architecture notes |
 | [downloads](downloads/) | Windows x64 ZIP and its SHA-256 checksum |
 | [references](references/) | Public Markdown references for the demo |
+| [investigation](investigation/) | 510 original research PDFs, grouped by topic |
+| [Investigation (.md)](Investigation%20%28.md%29/) | 503 Markdown research documents and the import manifest |
 
 ## Research references
+
+The complete [research library](docs/RESEARCH.md) includes PDF originals and their Markdown counterparts. To use it in NETIN, open **Documents** and select the local `Investigation (.md)` folder. The guide lists the categories, document counts and file checksums.
 
 - NASA Human Research Program [human spaceflight hazards](https://www.nasa.gov/hrp/hazards/) and [risks from inadequate sleep and irregular schedules](https://www.nasa.gov/reference/risk-from-inadequate-sleep-and-irregular-schedules/).
 - NASA Office of the Chief Health and Medical Officer [in-flight medical care](https://www.nasa.gov/ochmo/health-and-medical-systems/in-flight-medical-care/).
