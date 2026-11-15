@@ -1,3 +1,4 @@
 # Preserve imported research document bytes and their recorded checksums.
 investigation/** -text
 "Investigation (.md)/**" -text
+docs/*.pdf binary

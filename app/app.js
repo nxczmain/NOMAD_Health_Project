@@ -106,7 +106,7 @@ function save(next) {
 const intakeTurns = (entry, partialCheck = false) => entry.turns.map(turn =>
   ({...turn,mode:'check',date:entry.date,env:entry.env,partialCheck}));
 const freeChatTurns = () => (state.conversations || []).filter(turn =>
-  turn.mode !== 'check' && (turn.thread || '') === (state.chatThread || '')).slice(-80);
+  !['check','mental','physical'].includes(turn.mode) && (turn.thread || '') === (state.chatThread || '')).slice(-80);
 function setDraft(next) {
   const previous = state.drafts[state.env];
   const archive = previous?.mode === 'chat' && previous.date !== next.date ? intakeTurns(previous,true) : [];
@@ -290,8 +290,7 @@ let hamSpeechText = '';
 
 function attachHam(selected, restore = false) {
   if (!globalThis.HamAvatar) return;
-  const header = $('main').querySelector('.assistant-head canvas.ham-avatar');
-  const message = selected || $('chat-log')?.querySelector('.message.assistant:last-of-type canvas.ham-avatar');
+  const message = selected || ($('chat-log') || $('health-chat-log'))?.querySelector('.message.assistant:last-of-type canvas.ham-avatar');
   try {
     hamPlayer ||= HamAvatar.crear(null,{volverNeutralMs:0});
     for (const item of hamCanvases) hamPlayer.quitarLienzo(item);
@@ -302,11 +301,9 @@ function attachHam(selected, restore = false) {
       }
       if (!hamSpeechText) return;
     }
-    for (const item of [header,message]) {
-      if (item?.getContext('2d')) {
-        hamPlayer.agregarLienzo(item,Number(item.dataset.escala));
-        hamCanvases.push(item);
-      }
+    if (message?.closest('.message') && message.getContext('2d')) {
+      hamPlayer.agregarLienzo(message,Number(message.dataset.escala));
+      hamCanvases.push(message);
     }
   } catch { /* CSS shows the original sprite on unsupported canvases. */ }
 }
@@ -466,9 +463,9 @@ function preview(image) {
   const source = validPhoto(image);
   return source ? '<figure class="attachment"><img alt="Check-in attachment" src="'+source+'"><figcaption>Photo for crew medical review</figcaption></figure>' : '';
 }
-function dailyPhoto(day) {
+function dailyPhoto(day, env = '') {
   const photo = dailyPhotos.get(day);
-  if (!photo || !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(photo.src)) return '';
+  if (!photo || (env && photo.env !== env) || !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(photo.src)) return '';
   const time = new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit'}).format(new Date(photo.capturedAt));
   return '<figure class="attachment daily-photo"><img alt="Daily health log photo" src="'+photo.src+'"><figcaption>Daily photo · '+time+'</figcaption></figure>';
 }
@@ -561,45 +558,12 @@ function temperatureAlert(entry) {
 }
 
 function emergencyAnswer(kind, report = '') {
-  const earth = stageChoice === 'earth';
-  const action = earth ? 'Call local emergency services now.' :
-    'Alert the crew medical officer and activate the onboard emergency procedure now.';
-  if (kind === 'violence' || kind === 'self-harm') {
-    const gettingHelp = earth ? action : 'Activate the onboard emergency procedure and contact mission command or another available crewmate now.';
-    const distance = kind === 'violence' ? 'Move away from the person and from anything you could use to hurt them, if you can do so safely. ' :
-      'Move away from anything you could use to hurt yourself and ask another person to stay with you. ';
-    const danger = kind === 'violence' ? 'Tell responders you are afraid you may hurt someone, and say where you are.' :
-      'Tell responders you may hurt yourself, and say where you are.';
-    const paragraph = 'I’m taking this seriously. '+distance+gettingHelp+' '+danger;
-    return {text:paragraph,paragraph,urgent:true,
-      sources:[{ref:1,title:'NHS · Urgent help for a mental health emergency',url:'https://www.nhs.uk/nhs-services/mental-health-services/where-to-get-urgent-help-for-mental-health/'}]};
-  }
+  const reply = CI.emergencyReply(kind,report,stageChoice);
   if (kind === 'medical' && CI.bloodCough(report)) {
     const document = library.find(item => item.title === 'First aid for an injured crewmate');
-    const paragraph = '[[serio]] 1. '+action+
-      '\n2. Say the person is coughing up blood. Tell responders where you are, how much blood you can see, and whether breathing or alertness has changed.'+
-      '\n3. Stay with them if it is safe, keep watching their breathing and responsiveness, and follow the responders’ instructions.'+
-      (/\bbleeding\b/i.test(report) ? '\n4. If there is also a separate severe external wound, use firm direct pressure with a dressing if you are trained and it is safe.' : '');
-    return {text:paragraph,paragraph,urgent:true,sources:[
-      {ref:1,title:'NHS · Coughing up blood',url:'https://www.nhs.uk/symptoms/coughing-up-blood/'},
-      {ref:2,title:'American Red Cross · Severe internal bleeding',url:'https://www.redcross.org/take-a-class/resources/learn-first-aid/bleeding-life-threatening-internal'},
-      ...(document ? [{ref:3,id:document.id,title:document.title,start:0,end:document.markdown.length}] : [])
-    ]};
+    if (document) reply.sources.push({ref:3,id:document.id,title:document.title,start:0,end:document.markdown.length});
   }
-  if (kind !== 'unresponsive') {
-    const paragraph = action+' Tell responders exactly what is happening, where you are, and when it started. Follow their directions.';
-    return {text:paragraph,paragraph,urgent:true,
-      sources:[{ref:1,title:'MedlinePlus · Recognizing medical emergencies',url:CI.emergencySource}]};
-  }
-  const reportText = report.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[’']/g,'');
-  const absent = /\b(?:not breathing|isnt breathing|stopped breathing|only gasping|no respira|dejo de respirar|solo jadea)\b/.test(reportText);
-  const breathing = absent ?
-    'If they are not breathing normally or are only gasping, start CPR and use an AED as soon as available under your emergency procedure.' :
-    'Stay with them and keep checking their breathing. If it stops or they are only gasping, start CPR and use an AED as soon as available under your emergency procedure.';
-  const positioning = earth && !absent ? ' If breathing normally, place them on their side if you can do so safely and do not suspect a head, neck or back injury.' : '';
-  const paragraph = action+' Say the person is unresponsive and describe their breathing. '+breathing+positioning;
-  return {text:paragraph,paragraph,urgent:true,
-    sources:[{ref:1,title:'American Red Cross · Unresponsive and breathing',url:'https://www.redcross.org/take-a-class/resources/learn-first-aid/unresponsive-and-breathing-person'}]};
+  return reply;
 }
 
 function checkFollowUps(entry) {
@@ -618,7 +582,9 @@ function intakeSummary(entry, urgent) {
   if (urgent) return emergencyAnswer(urgent);
   const result = E.evaluate(entry,state.profile);
   const followUps = Object.values(checkFollowUps(entry));
-  const text = ['Your check-in includes '+result.coverage+' of '+E.metrics.length+' measurements.',
+  const update = CI.statusUpdate(entry.details?.find(item => item.title === 'How you feel now')?.answer || '');
+  const text = [update ? 'You reported feeling '+(update === 'better' ? 'better' : 'well')+' today.' : '',
+    'Your check-in includes '+result.coverage+' of '+E.metrics.length+' measurements.',
     result.flags.length ? 'Review the recorded '+result.flags.join(', ')+'.' : '',
     followUps[0] || (result.coverage < E.metrics.length ? 'Add the missing measurements when available.' : '')].filter(Boolean).join(' ');
   return {text,paragraph:text,followUps};
@@ -656,7 +622,8 @@ function speakIntake() {
 async function prepareIntakeQuestion(current, openAssistant = false) {
   const available = CI.questions(current);
   const activeSession = session;
-  const needsModel = available.length && !current.next && !['urgent','symptoms'].includes(available[0].key) && !['offline','missing'].includes(model);
+  const needsModel = available.length && !current.next && !current.acknowledgment &&
+    !['urgent','symptoms'].includes(available[0].key) && !['offline','missing'].includes(model);
   if (needsModel) busy = true;
   if (openAssistant) showRoute('bot');
   else if (needsModel && view() === 'bot') render();
@@ -778,7 +745,7 @@ async function finishIntake(current = draft()) {
   if (urgent && urgentReport && ['violence','self-harm','unresponsive','medical'].includes(urgent)) {
     addEmergencyHandoff(urgentReport.content,urgent,turn,owner);
   }
-  if (hasData && !urgent) {
+  if (hasData && !urgent && !current.answers.statusUpdate) {
     try {
       const recentResponses = current.turns.filter(item => item.role === 'user').map(item => item.content.slice(0,240));
       const enhanced = await AI.checkInSummary({...crewContext('daily',entry.details.map(item => item.answer).join(' ')),recentResponses},checkFollowUps(entry));
@@ -837,7 +804,7 @@ function checkView() {
       (step.key === 'note' ? field('How did your emotional state affect your work today?','<select name="moodImpact"><option value="">Select an option</option>'+
         Object.entries(E.dutyImpact).map(([id,label]) => '<option value="'+id+'"'+(id === current.values.moodImpact ? ' selected' : '')+'>'+label+'</option>').join('')+'</select>')+
         field('Photo (optional)','<input name="image" type="file" accept="image/jpeg,image/png,image/webp">')+preview(current.image)+(current.image ? button('Remove photo','remove-image') : '') : '')+
-      '<p class="error" role="alert"></p><div class="actions"><button class="button primary" type="submit" value="next">'+(step.key === 'note' ? 'Save check-in' : 'Next')+'</button>'+
+      '<p class="micro check-feedback" role="status"></p><p class="error" role="alert"></p><div class="actions"><button class="button primary" type="submit" value="next">'+(step.key === 'note' ? 'Save check-in' : 'Next')+'</button>'+
       (step.key === 'note' ? '' : '<button class="button" type="submit" value="skip">Skip</button>')+(current.index ? button('Back','back') : '')+'</div></form>';
   } else if (entry) {
     body = '<h2>Today’s check-in</h2>'+assessment(entry)+E.metrics.map(metric => reading(metric,entry.values[metric.key])).join('')+details(entry)+
@@ -890,7 +857,7 @@ function motorHistory() {
 
 function motorTable(days, env = state.env) {
   const dates = new Set(days.map(day => day.date));
-  const rows = motorHistory().filter(day => dates.has(day.date) && day.env === env).sort((a,b) => b.date.localeCompare(a.date));
+  const rows = motorHistory().filter(day => dates.has(day.date) && (!env || day.env === env)).sort((a,b) => b.date.localeCompare(a.date));
   if (!rows.length) return '<p class="muted">No motor rounds were saved in this period.</p>';
   return '<div class="table-scroll"><table><thead><tr><th scope="col">Date</th><th scope="col">Environment</th>'+
     '<th scope="col">Game</th><th scope="col">Measurements</th><th scope="col">Misses</th>'+
@@ -1135,25 +1102,32 @@ async function submitCheck(event) {
   const step = E.steps[current.index];
   const value = form.elements.answer.value.trim();
   const metric = E.metricByKey(step.key);
+  const prompt = {...step,prompt:metric?.prompt || step.prompt || environment().question};
   const values = {...current.values};
   const owner = session;
   const skip = event.submitter?.value === 'skip';
+  const controls = [...form.querySelectorAll('button,input,select,textarea')].filter(control => !control.disabled);
+  const feedback = form.querySelector('.error');
+  const status = form.querySelector('.check-feedback');
   form.dataset.pending = 'true';
+  feedback.textContent = '';
+  for (const control of controls) control.disabled = true;
   try {
     let kind = !skip && (CI.emergencyKind(value) || (step.key === 'impact' && value === 'urgent' ? 'medical' : ''));
     if (!kind && !skip && value && !step.options && !metric) {
       busy = true;
+      status.textContent = 'Ham is checking your entry…';
       kind = await AI.assessSafety(value,[]).catch(() => '');
       if (session !== owner || draft() !== current) return;
       busy = false;
     }
-    if (kind) return finishIntake(CI.interrupt(CI.create(state.env,current.date,today(),current),step,value,kind));
+    if (kind) return finishIntake(CI.interrupt(CI.create(state.env,current.date,today(),current),prompt,value,kind));
     if (skip || (step.key === 'note' && !value)) delete values[step.key];
     else if (metric) values[step.key] = E.parseMetric(metric,value);
     else if (value && (!step.options || Object.hasOwn(step.options,value))) values[step.key] = value;
     else throw new Error('Enter a response or choose Skip.');
     if (E.hasLowBodyTemperature({values})) {
-      return finishIntake(CI.interrupt(CI.create(state.env,current.date,today(),{...current,values}),step,value,'temperature'));
+      return finishIntake(CI.interrupt(CI.create(state.env,current.date,today(),{...current,values}),prompt,value,'temperature'));
     }
     if (step.key !== 'note') {
       if (setDraft({...current,values,index:current.index+1})) {
@@ -1177,8 +1151,13 @@ async function submitCheck(event) {
       render();
       notify('Check-in saved on this computer.');
     }
-  } catch (error) { form.querySelector('.error').textContent = error.message; }
-  finally { if (session === owner) busy = false; delete form.dataset.pending; }
+  } catch (error) { feedback.textContent = error.message; }
+  finally {
+    if (session === owner) busy = false;
+    status.textContent = '';
+    for (const control of controls) control.disabled = false;
+    delete form.dataset.pending;
+  }
 }
 
 async function checkModel() {
@@ -1197,32 +1176,38 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
   stopSpeech();
   const currentSession = session;
   const [turn] = datedTurns([{role:'user',content:query}]);
-  const history = chat.filter(item => !item.mode || item.mode === 'chat').slice(-12).map(({role,content}) => ({role,content}));
+  const scoped = ['physical','mental'].includes(mode);
+  const conversational = mode === 'chat' || scoped;
+  const timeline = scoped ? healthChatTurns(mode) : chat;
+  const history = timeline.filter(item => !item.mode || item.mode === mode).slice(-12).map(({role,content}) => ({role,content}));
   turn.mode = mode;
   turn.thread = state.chatThread || '';
   if (!save({...state,conversations:[...(state.conversations || []),turn]})) return;
   const currentAlert = activeEmergency();
-  const safetyHistory = chat.filter(item => item.date === turn.date && (!item.urgent || (currentAlert &&
+  const safetyHistory = timeline.filter(item => item.date === turn.date && (!item.urgent || (currentAlert &&
     (item.incidentId ? item.incidentId === currentAlert.id : item.content === currentAlert.content)))).slice(-6);
-  chat = [...chat.slice(-79),turn];
+  if (!scoped) chat = [...chat.slice(-79),turn];
+  const isVisible = () => scoped ? view() === 'health' && healthTab === mode &&
+    (mode !== 'physical' || physicalTab === 'body') : view() === 'bot';
   const resolved = AI.resolvedMessage(query);
   let kind = CI.emergencyKind(query);
-  if (!kind && !resolved && mode === 'chat') {
+  if (!kind && !resolved && conversational) {
     busy = true;
-    if (view() === 'bot') render();
+    if (isVisible()) render();
     try { kind = await AI.assessSafety(query,safetyHistory).catch(() => ''); }
     finally { if (session === currentSession) busy = false; }
     if (session !== currentSession) return;
   }
   const nextEnv = mode === 'chat' ? E.detectEnvironmentChange(query) : null;
-  const lowTemperature = !resolved && mode !== 'guide' && E.hasLowBodyTemperature(today()) &&
+  const lowTemperature = !resolved && !scoped && mode !== 'guide' && E.hasLowBodyTemperature(today()) &&
     emergencyAlerts().some(alert => alert.reason && !(state.dismissedAlerts || []).some(record => record.id === alert.id));
   const urgent = kind || (lowTemperature ? 'temperature' : '');
+  let response;
   if (urgent) {
     const alert = kind ? emergencyAnswer(kind,query) : temperatureAlert(today());
-    chat.push({...alert,role:'assistant',content:alert.text,urgent:true,urgentKind:urgent,incidentId:crypto.randomUUID()});
+    response = {...alert,content:alert.text,urgent:true,urgentKind:urgent,incidentId:crypto.randomUUID()};
   } else if (resolved && currentAlert) {
-    chat.push({role:'assistant',content:'[[neutral]] Thanks for the update. The emergency alert is still available. You can dismiss it once the immediate concern has been addressed.'});
+    response = {content:'[[neutral]] Thanks for the update. The emergency alert is still available. You can dismiss it once the immediate concern has been addressed.'};
   } else if (nextEnv) {
     let text = E.environments[nextEnv].name+' is already the active environment.';
     if (nextEnv !== state.env) {
@@ -1230,38 +1215,55 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
       confirmStage(nextEnv);
       selectedDay = null;
     }
-    chat.push({role:'assistant',content:text});
+    response = {content:text};
   } else {
     const review = mode === 'daily' || mode === 'week';
-    const intent = mode === 'chat' ? AI.chatIntent(query,history) : null;
-    const companionMode = mode === 'chat' && chatMode === 'companion' && !intent.health;
+    const intent = conversational ? AI.chatIntent(query,history) : null;
+    const mismatch = scoped ? AI.scopeMismatch(mode,query) : '';
+    const emotional = mode === 'mental' || (mode === 'chat' && intent.mental);
+    const focus = mode === 'physical' ? 'physical' : mode === 'chat' && intent.current ? 'current' : '';
+    const companionMode = mode === 'chat' && chatMode === 'companion' && !intent.health && !emotional;
+    const present = intent?.current || query;
+    const context = focus ? physicalContext(present,intent?.prior) : null;
     let social;
     busy = true;
-    render();
+    if (isVisible()) render();
     try {
-      if (companionMode) {
-        social = await AI.companion(query,history,environment().name,firstName());
+      let result;
+      if (mismatch) {
+        result = {text:'We can talk about '+(mode === 'mental' ? 'how you’re feeling emotionally' : 'physical changes')+
+          ' here. For that question, open Health → '+(mismatch === 'physical' ? 'Physical' : 'Mental')+'.'};
+      } else if (emotional) {
+        result = await AI.mentalSupport(query,history,mentalContext());
+      } else {
+        if (companionMode) {
+          social = await AI.companion(query,history,environment().name,firstName());
+          if (session !== currentSession) return;
+        }
+        if ((!social || social.health) && missionIndexing) {
+          await missionIndexing;
+          if (session !== currentSession) return;
+        }
+        const data = social && !social.health ? null : context || crewContext(mode,query);
+        const hasReviewData = !review || data.checkIns.length > 0;
+        const terms = searchContext || (review ? reviewSearch(data) : intent?.search || '');
+        result = social && !social.health && social.text ? {text:social.text} :
+          hasReviewData ? await AI.answer(present,mode === 'chat' ? history : [],library,data,terms,!intent?.search && !focus,focus) : null;
         if (session !== currentSession) return;
       }
-      if ((!social || social.health) && missionIndexing) {
-        await missionIndexing;
-        if (session !== currentSession) return;
-      }
-      const data = social && !social.health ? null : crewContext(mode,query);
-      const hasReviewData = !review || data.checkIns.length > 0;
-      const relevantTerms = searchContext || (review ? reviewSearch(data) : intent?.search || '');
-      const result = social && !social.health && social.text ? {text:social.text} :
-        hasReviewData ? await AI.answer(query,mode === 'chat' ? history : [],library,data,relevantTerms,!intent?.search) : null;
       if (session !== currentSession) return;
       turn.modelTurn = !!result?.sources?.length;
       turn.companion = !!social && !social.health;
       const reply = review && !turn.modelTurn ? localReview(mode, result?.text) : result;
-      chat.push({role:'assistant',mode,content:reply?.text || reply,paragraph:reply?.paragraph,
-        sections:reply?.sections,sources:reply?.sources,modelTurn:turn.modelTurn,companion:turn.companion});
-      if (turn.modelTurn || turn.companion) model = 'ready';
+      response = {content:reply?.text || reply,paragraph:reply?.paragraph,
+        sections:reply?.sections,sources:reply?.sources,modelTurn:turn.modelTurn,companion:turn.companion};
+      if ((turn.modelTurn && !emotional) || turn.companion) model = 'ready';
     } catch (error) {
-      if (session === currentSession && companionMode && !social?.health) {
-        chat.push({role:'assistant',content:'I couldn’t respond just now. Your message is still here in the chat.'});
+      if (session === currentSession && focus) {
+        const fallback = AI.physicalFallback(present,context);
+        response = {content:fallback.text,paragraph:fallback.paragraph};
+      } else if (session === currentSession && companionMode && !social?.health) {
+        response = {content:'I couldn’t respond just now. Your message is still here in the chat.'};
       } else if (session === currentSession) {
         if (missionIndexing) await missionIndexing;
         if (session !== currentSession) return;
@@ -1270,26 +1272,31 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
           related.length ? 'Ham could not respond. These passages match your question.' :
           library.length ? 'Ham could not respond, and no related passage was found.' :
           'Ham could not respond. Load mission documents to find relevant passages.';
-        chat.push({role:'assistant',content:text,related});
+        response = {content:text,related};
       }
     } finally { if (session === currentSession) busy = false; }
   }
-  if (session === currentSession && chat.at(-1)?.role === 'assistant') {
-    const [reply] = datedTurns([{...chat.at(-1),mode,date:turn.date,env:turn.env,thread:turn.thread}]);
-    chat[chat.length-1] = reply;
+  if (session !== currentSession) return;
+  let reply;
+  if (response) {
+    [reply] = datedTurns([{...response,role:'assistant',mode,date:turn.date,env:turn.env,thread:turn.thread}]);
+    if (!scoped) chat.push(reply);
     const dailyFlow = urgent ? {...flow(),date:E.dateKey(),check:'urgent'} : state.dailyFlow;
     const checkBeforeAlert = urgent && flow().check !== 'urgent' ? flow().check : state.checkBeforeAlert;
     if (!save({...state,dailyFlow,checkBeforeAlert,urgentAlert:urgent ? reply : state.urgentAlert,conversations:[...(state.conversations || []),reply]}) && urgent) {
       state = {...state,dailyFlow,checkBeforeAlert,urgentAlert:reply};
     }
   }
-  if (session === currentSession && view() === 'bot') {
+  if (isVisible()) {
     render();
-    $('chat-form')?.elements.query.focus();
-    presentHam(chat.at(-1));
+    $(scoped ? 'health-chat-form' : 'chat-form')?.elements.query.focus();
+    presentHam(reply);
+  } else if (['bot','settings'].includes(view()) ||
+      (view() === 'health' && !(healthTab === 'physical' && physicalTab === 'ultrasound'))) {
+    render();
   }
-  if (session === currentSession && urgent && view() !== 'bot') showRoute('bot');
-  if (session === currentSession && kind) addEmergencyHandoff(query,kind,chat.at(-1),currentSession);
+  if (urgent && view() !== 'bot' && !scoped) showRoute('bot');
+  if (kind && reply) addEmergencyHandoff(query,kind,reply,currentSession);
 }
 
 function addEmergencyHandoff(report,kind,immediate,owner) {
@@ -1320,19 +1327,29 @@ function reviewSearch(data) {
   return [...topics, data.activeEnvironment].join(' ');
 }
 
-function exportReport(weekly, reportDate = E.dateKey()) {
-  const dailyEntries = weekly ? [] : state.records.filter(item => item.date === reportDate);
-  const entries = weekly ? reportDays() : [{date:reportDate,entry:dailyEntries.find(item => item.env === state.env) || dailyEntries.at(-1)}];
-  const conversations = weekly ? [] : recordedConversations().filter(item => item.date === reportDate);
-  const moods = weekly ? [] : (state.moodLogs || []).filter(item => item.date === reportDate);
+function exportReport(weekly, reportDate = E.dateKey(), env = state.env) {
+  const includes = item => item.date === reportDate && (!env || item.env === env);
+  const dailyEntries = weekly ? [] : state.records.filter(includes);
+  const entries = weekly ? reportDays() : [{date:reportDate}];
+  const conversations = weekly ? [] : recordedConversations().filter(includes);
+  const moods = weekly ? [] : (state.moodLogs || []).filter(includes);
+  const journals = weekly ? [] : (state.journals || []).filter(includes);
+  const symptomsForDay = weekly ? [] : bodyRecords().filter(includes);
+  const checkIn = entry => '<h3>Check-in · '+escape(stages[entry.env])+'</h3>'+assessment(entry)+'<ul>'+
+    E.metrics.map(metric => '<li>'+metric.label+': '+E.format(entry.values[metric.key])+' '+metric.unit+'</li>').join('')+'</ul>'+details(entry,false);
+  const label = env ? stages[env] : 'All stages';
   const title = weekly ? (reportLength === 7 ? 'Weekly' : '30-day')+' crew health log' : 'Crew medical summary';
   const markup = '<!doctype html><html lang="en"><meta charset="utf-8"><title>'+title+'</title><style>body{max-width:860px;margin:35px auto;padding:0 20px;font:16px/1.5 system-ui;color:#152c33}article{border-top:1px solid #a5b4b1;margin-top:26px}dt{font-weight:bold}img{max-width:100%;height:auto}</style><h1>'+
-    title+'</h1><p>NOMAD / '+(entries.some(({entry}) => entry?.sample) ? 'Includes demonstration data / ' : '')+environment().name+'</p><p>Crew member: '+escape(state.profile.name)+'<br>Crew medical officer: '+escape(state.profile.medical)+
+    title+'</h1><p>NOMAD / '+(dailyEntries.some(entry => entry.sample) || entries.some(({entry}) => entry?.sample) ? 'Includes demonstration data / ' : '')+escape(label)+'</p><p>Crew member: '+escape(state.profile.name)+'<br>Crew medical officer: '+escape(state.profile.medical)+
     '<br>History: '+escape(state.profile.history)+'<br>Allergies: '+escape(state.profile.allergies)+'</p>'+
     (weekly ? '<h2>Log conclusion</h2>'+logConclusion(reportLength) : '')+
-    entries.map(({date,entry}) => '<article><h2>'+formatDay(date)+'</h2>'+(entry ? assessment(entry)+'<ul>'+
-    E.metrics.map(metric => '<li>'+metric.label+': '+E.format(entry.values[metric.key])+' '+metric.unit+'</li>').join('')+'</ul>'+details(entry,false) : '<p>No check-in.</p>')+
-    dailyPhoto(date)+moods.map(item => '<h3>Mood check-in</h3>'+moodReport(item)).join('')+conversationLog(conversations,false)+'</article>').join('')+'<section><h2>Motor skills</h2>'+motorTable(entries)+'</section></html>';
+    entries.map(({date,entry}) => '<article><h2>'+formatDay(date)+'</h2>'+
+      ((weekly ? (entry ? checkIn(entry) : '') : dailyEntries.map(checkIn).join('')) || '<p>No check-in.</p>')+
+      dailyPhoto(date,env)+journals.map(item => '<h3>Journal · '+escape(stages[item.env])+'</h3><p>'+escape(item.text)+'</p>').join('')+
+      symptomsForDay.map(item => '<p><strong>'+escape(stages[item.env])+' · '+escape(regionLabel(item.side,item.region))+'</strong> '+
+        escape(symptoms[item.symptom])+' '+escape(item.intensity)+'/10 '+escape(item.notes)+'</p>').join('')+
+      moods.map(item => '<h3>Mood check-in</h3>'+moodReport(item)).join('')+conversationLog(conversations,false)+'</article>').join('')+
+    '<section><h2>Motor skills</h2>'+motorTable(entries,env)+'</section></html>';
   const filename = 'nomad-'+(weekly ? (reportLength === 7 ? 'weekly' : '30-day') : 'medical')+'-'+(weekly ? E.dateKey() : reportDate)+'.html';
   const bridge = globalThis.chrome?.webview;
   if (bridge) bridge.postMessage(filename+'\n'+markup);
@@ -1500,6 +1517,7 @@ document.addEventListener('submit',async (event) => {
   if (form.id === 'check-form') return submitCheck(event);
   if (form.id === 'intake-form') return submitIntake(form.elements.answer?.value || '',false,form.elements.image?.files[0]);
   if (form.id === 'chat-form') return sendMessage(form.elements.query.value.trim());
+  if (form.id === 'health-chat-form' && ['physical','mental'].includes(form.dataset.area)) return sendMessage(form.elements.query.value.trim(),form.dataset.area);
   if (form.id === 'guide-form') {
     const topic = form.elements.topic.value.trim();
     if (!topic || busy || draft()?.mode === 'chat') return;

@@ -40,8 +40,30 @@
     glucose: 'When did you last eat relative to the glucose measurement?'
   };
   const detailTitles = {symptoms:'Symptoms',onset:'Onset and course',symptomDetail:'Symptom follow-up',symptomContext:'Additional symptom context',
-    impact:'Effect on duties',moodImpact:'Mood and duties notes'};
+    impact:'Effect on duties',moodImpact:'Mood and duties notes',statusUpdate:'How you feel now'};
   const freeTextOptions = ['impact','moodImpact'];
+  const symptomFields = ['symptoms','onset','impact','symptomDetail','symptomContext'];
+  const normalize = text => text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f’']/g,'');
+
+  function statusUpdate(text) {
+    let wording = normalize(text).replace(/\bstalb\s*eand\b/g,'stable and').replace(/\b(?:stalbe|stabel)\b/g,'stable')
+      .replace(/\bstable and (?=(?:good|fine|well|okay|better)\b)/g,'');
+    const correction = /\bi (?:just|already) told you (?:that )?(?:i (?:was|am) feeling|im feeling) ([\w ]+)[.!\s]*$/.exec(wording);
+    if (correction && !emergencyKind(text) &&
+        !/\b(?:still|sigo|empeor\w*|i (?:feel|have|am) (?:dizzy|sick|in pain|nauseous)|now i have)\b/.test(wording)) {
+      wording = 'i feel '+correction[1].trim();
+    }
+    const clauses = wording.split(/[,!;\n]+|\.(?!\d)|\b(?:but|pero|and|y)\b/)
+      .map(clause => clause.trim()).filter(Boolean);
+    const better = /^(?:(?:i (?:feel|am)|im|feeling) (?:feeling )?|me siento |ya estoy )?(?:much |a lot |a little |mucho |bastante |un poco )?(?:better|mejor)(?: now| today| than yesterday| this morning| after (?:sleeping|resting)| hoy| que ayer| despues de (?:dormir|descansar))?(?: thanks| gracias)?$/;
+    const well = /^(?:(?:i (?:feel|am)|im) (?:feeling )?(?:fine|well|good|okay|ok)|(?:all|everything is) good|me siento bien|(?:ya )?estoy bien|todo bien)(?: now| today| hoy| ahora)?(?: thanks| gracias)?$/;
+    const cleared = /^(?:no (?:more )?(?:new )?(?:symptoms|pain|headache|nausea|dizziness)(?: now| today| anymore)?|i (?:dont have|no longer have) (?:any |a )?(?:symptoms|pain|headache|nausea|dizziness)(?: now| anymore)?|(?:the |my )?(?:pain|headache|dizziness|nausea) is gone|ya no (?:me duele (?:la cabeza|el brazo|la pierna)|tengo (?:dolor|sintomas|mareos|nauseas))|sin (?:sintomas|molestias|dolor))$/;
+    const reading = /^(?:i )?(?:(?:slept|dormi) (?:only |solo )?\d+(?:\.\d)? (?:hours?|horas?|h)(?: last night| anoche)?|(?:my |mi )?(?:pulse|pulso|heart rate) (?:is |was |es )?\d+ bpm|(?:my |mi )?(?:mood|animo) (?:is |was |es )?\d+\s*\/\s*10)$/;
+    if (!clauses.length || !clauses.every(clause => better.test(clause) || well.test(clause) || cleared.test(clause) ||
+        reading.test(clause) || /^(?:thanks|gracias|nothing else|nada mas)$/.test(clause))) return '';
+    return clauses.some(clause => better.test(clause) || /\b(?:gone|anymore|ya no)\b/.test(clause)) ? 'better' :
+      clauses.some(clause => well.test(clause) || cleared.test(clause)) ? 'well' : '';
+  }
 
   function routineResponse(text) {
     const normalized = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
@@ -50,7 +72,7 @@
     const routine = /^(?:just\s+)?(?:(?:the|a|my)\s+)?(?:(?:normal|routine|regular|daily)\s+)?check\s?in$|^(?:(?:solo|nomas)\s+)?(?:(?:el|un|la|una)\s+)?(?:(?:chequeo|registro|revision)(?:\s+(?:diari[oa]|habitual|normal|de rutina))?|(?:check\s?in)(?:\s+(?:normal|diario|de rutina))?)$/;
     const remainder = normalized.replace(denial,'');
     const improvement = /^(?:i(?: m)? (?:feel(?:ing)?|am) (?:much |a lot )?better|me siento (?:mucho |bastante )?mejor)(?: (?:(?:and |y )?(?:i slept well|i slept better|ya dormi bien|dormi bien)|now|today|ya))*(?: thanks| gracias)?$/;
-    return (denial.test(normalized) && !remainder) || routine.test(remainder) || improvement.test(normalized);
+    return !!statusUpdate(text) || (denial.test(normalized) && !remainder) || routine.test(remainder) || improvement.test(normalized);
   }
 
   function restore(current) {
@@ -58,8 +80,13 @@
     if (!answers.symptoms || urgent(current) || !routineResponse(answers.symptoms)) return current;
     const cleaned = {...answers,symptoms:''};
     for (const key of ['onset','impact','symptomDetail','symptomContext']) delete cleaned[key];
-    return {...current,answers:cleaned,values:{...values,impact:'none'},next:undefined};
+    const update = statusUpdate(answers.symptoms);
+    if (update) cleaned.statusUpdate = answers.symptoms;
+    return {...current,answers:cleaned,values:{...values,impact:'none'},next:undefined,
+      acknowledgment:update ? statusAcknowledgment(update) : undefined};
   }
+
+  const statusAcknowledgment = update => update === 'better' ? 'I’m glad you’re feeling better.' : 'I’m glad you’re feeling well.';
 
   function create(env, date, previous, legacy, personal = {}) {
     const values = previous && !previous.sample ? {...previous.values,...legacy?.values} : {...legacy?.values};
@@ -84,7 +111,7 @@
     if (/\b(headache|migraine|dolor de cabeza)\b/.test(text)) return 'headache';
     if (/\b(vision|eyesight|blurr\w*|vista borrosa|veo borros[oa]|flashes|destellos)\b/.test(text)) return 'vision';
     if (/\b(dust|smoke|fumes|exposure|polvo|humo)\b/.test(text)) return 'exposure';
-    if (/\b(lonel\w*|homesick|isolated|miss (?:home|my family)|anxious|sad|stressed|soledad|sol[oa]|ansios[oa]|triste|estres\w*|extrano a)\b/.test(text)) return 'mood';
+    if (/\b(lonel\w*|homesick|isolated|miss (?:home|my family)|anxious|sad|stressed|depress\w*|hopeless|overwhelmed|feel(?:ing)? (?:low|down)|soledad|sol[oa]|ansios[oa]|triste|deprimi\w*|estres\w*|extrano a)\b/.test(text)) return 'mood';
     if (/\b(sleep|slept|insomnia|nightmares|sueno|dormi|dormir|desperte)\b/.test(text)) return 'sleep';
     if (/\b(fatigu\w*|tired|exhaust\w*|agotad[oa]|cansad[oa])\b/.test(text)) return 'fatigue';
     if (/\b(digest\w*|diarrh\w*|constipat\w*|estre[nñ]imiento|diarrea)\b/.test(text)) return 'digestion';
@@ -120,16 +147,18 @@
     if (answers.symptoms) {
       const topic = current.topic || symptomTopic(current);
       const moodReason = moodReasonReported(current);
+      const positionKnown = topic === 'dizziness' && /\b(?:when|after) i (?:stand|sit|move|turn|walk)|\b(?:cuando|al) (?:me )?(?:levant\w*|sent\w*|mov\w*)\b/i.test(answers.symptoms);
       if (!Object.hasOwn(answers,'onset') && !/\b(today|yesterday|since|this morning|last night|(?:hours?|days?|weeks?) ago|desde|ayer|hoy|anoche|hace)\b/i.test(answers.symptoms.split(/[.!?;\n]/)[0])) {
         followups.push({key:'onset',prompt:(topic === 'mood' ? 'Thanks for sharing. When did you start feeling this way?' :
           'When did you first notice it?'),optional:true});
       }
       if (!Object.hasOwn(answers,'impact') && !['mood','sleep'].includes(topic)) followups.push({key:'impact',prompt:'Does it make any of your duties harder?',freeText:true,options:{mild:'I can do my duties',task:'It affects my duties',urgent:'I need help now'}});
       if (!Object.hasOwn(answers,'symptomDetail')) followups.push({key:'symptomDetail',
-        prompt:moodReason ? 'What would make the rest of your shift feel easier?' : symptomQuestions[topic],optional:true});
+        prompt:moodReason ? 'What would make the rest of your shift feel easier?' :
+          positionKnown ? 'How long does the dizziness last?' : symptomQuestions[topic],optional:true});
       if (!moodReason && answers.symptomDetail && followUpQuestions[topic] && !Object.hasOwn(answers,'symptomContext')) followups.push({
         key:'symptomContext',prompt:topic === 'mood' ? 'What would feel most helpful right now: talking it through, taking a quiet moment, or checking in with someone on your crew?' :
-          followUpQuestions[topic],optional:true
+          positionKnown ? 'Have you felt dizzy while resting too?' : followUpQuestions[topic],optional:true
       });
       if (followups.length) return followups;
     }
@@ -142,7 +171,7 @@
       }];
     }
     if (readings.length) return readings;
-    if (!Object.hasOwn(answers,'moodImpact') && (values.mood == null || values.mood <= 6 || symptomTopic(current) === 'mood')) {
+    if (!Object.hasOwn(answers,'moodImpact') && ((values.mood != null && values.mood <= 6) || symptomTopic(current) === 'mood')) {
       return [{key:'moodImpact',prompt:'How much did your mood affect your focus or duties?',options:E.dutyImpact,freeText:true,optional:true}];
     }
     if (!Object.hasOwn(answers,'context') && (personal.changedEnvironment || symptomTopic(current) === 'exposure')) {
@@ -155,7 +184,8 @@
   function question(current) {
     const available = questions(current);
     const next = available.find(item => item.key === current.next?.key);
-    return next ? {...next,prompt:current.next.prompt} : available[0];
+    const selected = next ? {...next,prompt:current.next.prompt} : available[0];
+    return selected && current.acknowledgment ? {...selected,prompt:current.acknowledgment+' '+selected.prompt} : selected;
   }
 
   function unresponsiveReport(text) {
@@ -183,8 +213,8 @@
     for (const clause of clauses) {
       if (/^\s*(?:what if|how (?:do|should) i respond if|what should i do if|if (?:someone|a person|i)|que (?:hago|pasaria) si|in (?:a |this )?(?:simulation|scenario)|hypothetically)\b/.test(clause) &&
           !/\b(?:right now|currently|ahora mismo|en este momento)\b/.test(clause)) continue;
-      const selfHarm = /\bi\s+(?:still\s+)?(?:want to|wanna|plan to|am going to|m going to|m gonna|might)\s+(?:kill myself|hurt myself|harm myself|end my life|die)\b|(?<!\bno\s)\b(?:quiero|voy a|pienso|podria)\s+(?:suicidarme|matarme|hacerme dano|quitarme la vida)\b/;
-      if (selfHarm.test(clause)) return 'self-harm';
+      const selfHarm = /\bi\s+(?:still\s+)?(?:want to|wanna|plan to|am going to|m going to|m gonna|might)\s+(?:kill myself|hurt myself|harm myself|cut myself|end my life|die)\b|(?<!\bno\s)\b(?:quiero|voy a|pienso|podria)\s+(?:suicidarme|matarme|hacerme dano|quitarme la vida)\b/;
+      if (selfHarm.test(clause) || /\b(?:i (?:dont|do not) want to (?:live anymore|be alive)|(?:im|i am) (?:thinking (?:about|of)|having thoughts of) (?:hurting myself|suicide|ending my life)|no quiero (?:vivir mas|seguir viviendo)|estoy pensando en (?:hacerme dano|suicidarme))\b/.test(clause)) return 'self-harm';
       const englishThreat = /\b(?:i\s+(?:still\s+)?(?:want to|wanna|plan to|am going to|m going to|m gonna|might|could|will|m about to)|restrain(?:ing)? myself from|stop(?:ping)? myself from|cant stop myself from|cannot stop myself from)\s+(?:kill(?:ing)?|hurt(?:ing)?|harm(?:ing)?|shoot(?:ing)?|stab(?:bing)?|attack(?:ing)?)\s+(?!(?:myself|it|time|the (?:process|server|job|app|program|lights?)|a (?:process|job)|two birds)\b)[a-z]/;
       const spanishThreat = /(?<!\bno\s)\b(?:quiero|voy a|pienso|podria|planeo)\s+(?:matar(?:l[oa]s?)?|herir(?:l[oa]s?)?|atacar(?:l[oa]s?)?|disparar(?:le)?|hacer(?:le)? dano)(?:\s+(?:a\s+)?[a-z]|\b(?<=l[oa])|\s*$)|\b(?:me cuesta contenerme|no puedo controlarme|me estoy conteniendo)\b.{0,70}\b(?:matar\w*|herir\w*|atacar\w*|hacerle dano)\b/;
       const cannotKeepOthersSafe = /\bi\s+(?:cant|cannot)\s+(?:promise|guarantee)\s+(?:he|she|they)(?:ll\s+be|\s+will\s+be)\s+safe\s+if\s+i\b/;
@@ -193,10 +223,53 @@
       if (bloodCough(clause) && !/\b(?:what (?:causes|is)|why (?:do|does)|symptoms of|(?:he|she|they) (?:was|were) coughing|stopped coughing|no longer coughing|dejo de toser)\b/.test(clause) &&
           /(?:^\s*(?:coughing|coughing up|tosiendo)\b|\b(?:my|our|their|the|a)\s+(?:crew ?mate|friend|colleague|partner|person|patient)\b|\b(?:i|im|we|hes|shes|theyre|he|she|they|companer[oa]|tripulante)\b)/.test(clause)) return 'medical';
       const medical = /\b(?:(?:i|he|she|they|we) (?:cant|cannot|can not) breathe|(?:i|he|she|they) (?:am having|is having|are having|have|has) (?:chest pain|trouble breathing)|(?:i|he|she|they) just (?:fainted|passed out)|(?:my|his|her|their) (?:throat is closing|face is drooping)|(?:the |my |his |her |their )?bleeding (?:wont|will not) stop|no puedo respirar|(?<!\bno\s)(?:tengo (?:dolor (?:en el|de) pecho|dificultad para respirar)|me (?:duele el pecho|acabo de desmayar))|se (?:me |le )?cierra la garganta|(?:la )?hemorragia no para)\b/;
-      if (medical.test(clause)) return 'medical';
+      if (medical.test(clause) || /\b(?:me falta el aire|my chest hurts|i (?:can barely breathe|am struggling to breathe|m struggling to breathe)|(?:my|our) crew ?mate (?:[a-z]+ )?(?:cant breathe|cannot breathe|collapsed|just fainted))\b/.test(clause)) return 'medical';
       if (/\b(?:(?:i|he|she|they) (?:just )?(?:overdosed|took an overdose)|(?:i|he|she|they) think (?:i|he|she|they) (?:am|is|are) having (?:a stroke|a heart attack)|(?:acabo de tomar una sobredosis|creo que estoy sufriendo un derrame))\b/.test(clause)) return 'medical';
     }
     return '';
+  }
+
+  function emergencyReply(kind, report = '', env = 'earth') {
+    const earth = env === 'earth';
+    const action = earth ? 'Call local emergency services now.' :
+      'Alert the crew medical officer and activate the onboard emergency procedure now.';
+    if (kind === 'violence' || kind === 'self-harm') {
+      const gettingHelp = earth ? action : 'Alert the crew medical officer or mission control now, and ask another crew member for help.';
+      const distance = kind === 'violence' ? 'Give the other person space. Move away from them and from anything you could use to hurt them, if you can do so safely.' :
+        'Put distance between yourself and anything you could use to hurt yourself. Ask a trusted person to stay with you.';
+      const danger = kind === 'violence' ? 'Tell responders you are afraid you may hurt someone, and say where you are.' :
+        'Tell responders you may hurt yourself, and say where you are.';
+      const paragraph = '[[serio]] I’m glad you told me. Let’s get help now.\n1. '+
+        (kind === 'violence' ? distance+'\n2. '+gettingHelp : gettingHelp+'\n2. '+distance)+'\n3. '+danger;
+      return {text:paragraph,paragraph,urgent:true,
+        sources:[{ref:1,title:'NHS · Urgent help for a mental health emergency',url:'https://www.nhs.uk/nhs-services/mental-health-services/where-to-get-urgent-help-for-mental-health/'}]};
+    }
+    if (kind === 'medical' && bloodCough(report)) {
+      const paragraph = '[[serio]] Stay as calm as you can. Take these steps now.\n1. '+action+
+        '\n2. Say the person is coughing up blood. Tell responders where you are, how much blood you can see, and whether breathing or alertness has changed.'+
+        '\n3. Stay with them if it is safe, keep watching their breathing and responsiveness, and follow the responders’ instructions.'+
+        (/\bbleeding\b/i.test(report) ? '\n4. If there is also a separate severe external wound, use firm direct pressure with a dressing if you are trained and it is safe.' : '');
+      return {text:paragraph,paragraph,urgent:true,sources:[
+        {ref:1,title:'NHS · Coughing up blood',url:'https://www.nhs.uk/symptoms/coughing-up-blood/'},
+        {ref:2,title:'American Red Cross · Severe internal bleeding',url:'https://www.redcross.org/take-a-class/resources/learn-first-aid/bleeding-life-threatening-internal'},
+      ]};
+    }
+    if (kind !== 'unresponsive') {
+      const paragraph = '[[serio]] Stay as calm as you can. Take these steps now.\n1. '+action+
+        '\n2. Tell them what is happening, where you are and when it started.\n3. Stay with the person if it is safe and follow the responders’ directions.';
+      return {text:paragraph,paragraph,urgent:true,
+        sources:[{ref:1,title:'MedlinePlus · Recognizing medical emergencies',url:emergencySource}]};
+    }
+    const reportText = report.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[’']/g,'');
+    const absent = /\b(?:not breathing|isnt breathing|stopped breathing|only gasping|no respira|dejo de respirar|solo jadea)\b/.test(reportText);
+    const breathing = absent ?
+      'If they are not breathing normally or are only gasping, start CPR and use a portable defibrillator as soon as one is available under your emergency procedure.' :
+      'Stay with them and keep checking their breathing. If it stops or they are only gasping, start CPR and use a portable defibrillator as soon as one is available under your emergency procedure.';
+    const positioning = earth && !absent ? ' If breathing normally, place them on their side if you can do so safely and do not suspect a head, neck or back injury.' : '';
+    const paragraph = '[[serio]] Stay as calm as you can. Take these steps now.\n1. '+action+
+      '\n2. Tell them the person won’t wake up and say whether they are breathing normally.\n3. '+breathing+positioning;
+    return {text:paragraph,paragraph,urgent:true,
+      sources:[{ref:1,title:'American Red Cross · Unresponsive and breathing',url:'https://www.redcross.org/take-a-class/resources/learn-first-aid/unresponsive-and-breathing-person'}]};
   }
 
   function interrupt(current, prompt, report, kind) {
@@ -255,6 +328,15 @@
     if (!skip && !raw && prompt.key !== 'note') throw new Error('Enter an answer or choose an option.');
     if (skip && !prompt.optional) throw new Error('Answer this question to continue.');
     let value = skip ? '' : raw;
+    const update = !skip && symptomFields.includes(prompt.key) ? statusUpdate(raw) : '';
+    if (update) {
+      const readings = embeddedReadings(raw);
+      const answers = {...current.answers,...readings,symptoms:'',statusUpdate:raw};
+      for (const key of symptomFields.slice(1)) delete answers[key];
+      return {...current,next:undefined,topic:undefined,answers,values:{...current.values,...readings,impact:'none'},
+        acknowledgment:statusAcknowledgment(update),
+        turns:[...current.turns,{role:'assistant',content:prompt.prompt},{role:'user',content:raw}]};
+    }
     if (prompt.options && value) {
       const match = Object.keys(prompt.options).find(key => key === value.toLowerCase() || prompt.options[key].toLowerCase() === value.toLowerCase());
       if (!match && !prompt.freeText) throw new Error('Choose one of the answers.');
@@ -287,7 +369,7 @@
     const displayed = skip ? 'Skipped' : prompt.options?.[value] || (prompt.metric && (typeof value === 'number' || Array.isArray(value)) &&
       !Object.keys(readings).length ? E.format(value)+' '+prompt.metric.unit : raw || 'No additional note');
     const answers = {...current.answers,...readings,...(measurementDeferred ? {} : {[prompt.key]:value})};
-    return {...current,next:undefined,values:{...values,...readings},answers,
+    return {...current,next:undefined,acknowledgment:undefined,values:{...values,...readings},answers,
       turns:[...current.turns,{role:'assistant',content:prompt.prompt},{role:'user',content:displayed}]};
   }
 
@@ -314,5 +396,5 @@
   }
 
   root.NetinCheckIn = {create,question,questions,restore,apply,applyContext,urgent,toEntry,differingReadings,symptomTopic,symptomQuestions,moodReasonReported,
-    routineResponse,trainingScenario,bloodCough,emergencyKind,interrupt,emergencySource};
+    statusUpdate,routineResponse,trainingScenario,bloodCough,emergencyKind,emergencyReply,interrupt,emergencySource};
 })(globalThis);

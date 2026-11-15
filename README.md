@@ -11,11 +11,14 @@ Record daily observations, track changes over time, and prepare a handoff for th
 
 <p align="center">
   <a href="https://github.com/nxczmain/Nasa-Space-Apps/raw/refs/heads/main/downloads/NETIN-Windows-x64.zip"><strong>Download for Windows x64</strong></a>
+  · <a href="docs/NOMAD-Project-Demonstration.pdf">Project presentation</a>
   · <a href="#installation">Quick start</a>
   · <a href="#judge-walkthrough">Judge walkthrough</a>
-  · <a href="#repository-and-research">Research</a>
-  · <a href="#see-nomad-in-action">Screenshots</a>
 </p>
+
+## Contents
+
+[Mission problem](#the-mission-problem) · [Screenshots](#see-nomad-in-action) · [Workflow](#from-daily-check-in-to-crew-handoff) · [Installation](#installation) · [Judge walkthrough](#judge-walkthrough) · [Architecture and tests](#how-it-works) · [Repository and research](#repository-and-research) · [Team](#team)
 
 ## The mission problem
 
@@ -54,9 +57,11 @@ flowchart LR
 | In NOMAD | What crew members can do |
 | --- | --- |
 | **Home** | Follow the daily routine for a photo, check-in, motor tests and journal. Review the latest indicators and follow-ups. |
-| **Health** | Chart heart rate, blood pressure, temperature, blood glucose, sleep duration and mood. Select a region on the body map to record a symptom. |
-| **Records** | Review prior check-ins, journal entries and motor results. Each entry retains the mission stage where it was recorded. |
-| **Assistant** | Ask Ham a question about the mission library or practice an urgent crew handoff with a simulated report. |
+| **Health → Physical** | Log a symptom on the body map, ask Ham about a physical change or upload a synthetic ultrasound image for training. |
+| **Health → Mental** | Record how you feel and talk with Ham about mood, its effect on duties and ways to get support. |
+| **Health → General** | Chart heart rate, blood pressure, temperature, blood glucose, sleep duration and mood. |
+| **Records** | Review previous observations by date and mission stage. Export a daily report from the current filter. |
+| **Assistant** | Chat with Ham, complete an adaptive daily check-in or practice a crew emergency handoff using a simulated report. |
 | **Documents** | Browse the starter references or import the complete research collection as Markdown. |
 
 ## Installation
@@ -80,11 +85,13 @@ flowchart LR
 
 4. **Check the connection.** In **Settings → Check connection**, look for **Qwen is ready**. The ZIP already includes a starter library with five references. Open **Documents** to see them.
 
+The [installation guide](docs/INSTALLATION.md) covers runtime setup, importing the full research library and common errors. The [SHA-256 file](downloads/SHA256SUMS.txt) lets you verify the ZIP.
+
 ### Import the full Markdown research library
 
 1. Download and extract the [repository ZIP](https://github.com/nxczmain/Nasa-Space-Apps/archive/refs/heads/main.zip). Copy the entire `Investigation (.md)` folder, with its subfolders, into your NOMAD folder or another local location.
 2. In NOMAD, open **Documents → Load Markdown folder** and select `Investigation (.md)`. Wait for **Local library** to show **504 Markdown files** (503 research documents and the collection README).
-3. With Ollama running, open **Assistant** and ask “What does the research library say about sleep and fatigue?” Use **Open relevant passage** in Ham’s answer to check the source.
+3. With Ollama running, open **Assistant** and ask “What does the research library say about sleep and fatigue?” Expand **Sources** in Ham’s answer and select **Open passage** to check the reference.
 
 Each import replaces the loaded library. Select the complete parent folder when updating it. [Research library guide](docs/RESEARCH.md)
 
@@ -94,10 +101,13 @@ Start with **Maya Chen · Earth Orbit** to review a 30-day synthetic history and
 
 | Try this | What to look for |
 | --- | --- |
-| **Home → Daily check-in**. Describe a simulated change in sleep or energy, then select **Save and finish**. | Find the check-in recap and follow-ups on **Home**. |
+| **Assistant → Daily check-in**. Answer **No** to the opening safety question and enter “I’m feeling better now. I slept 7 hours and my pulse is 70 bpm.” | Ham acknowledges the improvement and moves to the next missing item. Select **Save and finish** to review the recap on **Home**. |
 | **Health → General**. Under **Measurement trend**, choose **Sleep** and switch between **7 days** and **30 days**. Open **Records** to inspect a previous check-in. | Compare the plotted readings with the observations saved for a date. |
 | **Assistant**. Ask “How can an irregular sleep schedule affect my ability to work?” | Read Ham’s answer and open the cited reference passages. |
-| **Assistant**. In a demo profile, send “My crewmate is unresponsive but breathing. What should I do?” | Inspect the prototype’s urgent alert and the reported observation it can extract for handoff. |
+| **Health → Mental**. In **Mental health with Ham**, enter “I feel low today and miss working with my crew.” | Ham offers a practical next step in plain English and uses the mood conversation for context. |
+| **Assistant → Chat with Ham**. In a demo profile, send “My crewmate is unresponsive but breathing. What should I do?” | Ham asks you to stay calm and displays numbered steps for getting help. |
+
+Use the [20 simulated Ham conversations](docs/HAM-SIMULATIONS.md) to try more check-in, physical and mental health scenarios, including urgent reports.
 
 <details>
 <summary><strong>Optional demo · Synthetic ultrasound</strong></summary>
@@ -116,18 +126,27 @@ Start with **Maya Chen · Earth Orbit** to review a 30-day synthetic history and
 
 **Ham and the mission library.** NOMAD retrieves relevant Markdown passages and passes them to Qwen through Ollama on the same machine. Once setup downloads are complete, the app and model can run locally. Recognized urgent reports trigger a built-in alert before model processing. [Architecture and build instructions](docs/ARCHITECTURE.md)
 
+**Tests.** With Node.js installed, run the conversation and safety tests from the repository root.
+
+```powershell
+node --test app/tests/*.test.cjs
+```
+
 ## Repository and research
 
 | Location | Contents |
 | --- | --- |
-| [`app/`](app/) | Desktop host, interface, Ollama integration and build script |
-| [`docs/`](docs/) | Installation, architecture and research guides |
+| [`app/`](app/) | Interface, local assistant and synthetic ultrasound samples |
+| [`app/desktop/`](app/desktop/) | WinForms host, Ollama bridge and Windows build script |
+| [`app/tests/`](app/tests/) | Conversation and safety regression tests |
+| [`docs/`](docs/) | Installation, architecture, research, screenshots and the [project presentation](docs/NOMAD-Project-Demonstration.pdf) |
 | [`downloads/`](downloads/) | Windows x64 ZIP and [SHA-256 checksum](downloads/SHA256SUMS.txt) |
 | [`references/`](references/) | Five starter references for the demo |
+| [`portable/`](portable/) | Scripts for running and updating a USB installation |
 | [`Investigation (.md)/`](Investigation%20%28.md%29/) | 503 importable research documents and conversion manifest |
 | [`investigation/`](investigation/) | 510 original PDFs, including figures and tables |
 
-The research collection covers in-flight medical conditions, mission risks, first aid and standards. The library guide maps the topics and links to the source files. [Research library](docs/RESEARCH.md) · [NASA in-flight medical care](https://www.nasa.gov/ochmo/health-and-medical-systems/in-flight-medical-care/)
+The research collection covers in-flight medical conditions, mission risks, first aid and standards. The library guide maps the topics and links to the source files. [Research library](docs/RESEARCH.md) · [NASA data and references](docs/NASA-DATA.md)
 
 > **Prototype status.** The demo uses synthetic crew records and ultrasound images. Operational use requires clinical validation and mission approval.
 
@@ -142,3 +161,5 @@ The research collection covers in-flight medical conditions, mission risks, firs
 - Luiz Ruiz
 
 [Team profile on NASA Space Apps](https://www.spaceappschallenge.org/2026/find-a-team/printnombre_del_equipo/)
+
+The demo-first layout and repository guide draw on [Phoenix Eye / FlameForecast](https://github.com/jbric16/FlameForecast_Project/tree/main).

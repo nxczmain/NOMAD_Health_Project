@@ -30,12 +30,21 @@ if (!(Test-Path -LiteralPath (Join-Path $install.FullName 'NETIN-Portable.flag')
 }
 $appFiles = @('NETIN.exe', 'Microsoft.Web.WebView2.Core.dll', 'Microsoft.Web.WebView2.WinForms.dll', 'WebView2Loader.dll')
 $interfaceFiles = @('index.html', 'style.css', 'assistant.js', 'check-in.js', 'crew-camera.js', 'crew-profiles.js', 'engine.js', 'motor.js', 'workspace.js', 'app.js', 'ui.js', 'assets\public-sans.woff2', 'assets\OFL-PublicSans.txt', 'assets\earth-orbit.jpg', 'assets\giant-panda.jpg', 'assets\nomad-logo-light.png', 'assets\nomad-logo-dark.png', 'assets\ham.svg', 'ham-avatar.js', 'ultrasound.js')
-foreach ($file in $appFiles + @($interfaceFiles | ForEach-Object { "interface\$_" })) {
+$starter = 'interface\starter-library'
+$starterIndex = Join-Path $starter 'index.json'
+$starterManifest = Get-Content -Raw -LiteralPath (Join-Path $app.FullName $starterIndex) | ConvertFrom-Json
+if (!$starterManifest.files -or @($starterManifest.files | Where-Object { $_.hash -notmatch '^[a-f0-9]{64}$' }).Count) {
+    throw 'El indice de referencias de la compilacion no es valido.'
+}
+$extras = @('Ultrasound Samples\phantom-bright-reflectors.png','Ultrasound Samples\phantom-dark-target.png') +
+    @($starterManifest.files | ForEach-Object { Join-Path $starter "files\$($_.hash).md" }) + @($starterIndex)
+foreach ($file in $appFiles + $extras + @($interfaceFiles | ForEach-Object { "interface\$_" })) {
     if (!(Test-Path -LiteralPath (Join-Path $app.FullName $file) -PathType Leaf)) { throw "Falta $file en la compilacion." }
 }
 if (Get-Process -Name NETIN -ErrorAction SilentlyContinue) { throw 'Cierra la ventana de NETIN antes de actualizar.' }
 $ui = Join-Path $install.FullName 'interface'
-foreach ($folder in @($ui,(Join-Path $ui 'assets'))) {
+foreach ($relative in 'interface','interface\assets',$starter,(Join-Path $starter 'files'),'Ultrasound Samples') {
+    $folder = Join-Path $install.FullName $relative
     if (Test-Path -LiteralPath $folder) {
         if ((Get-Item -LiteralPath $folder).Attributes -band [IO.FileAttributes]::ReparsePoint) {
             throw "Redireccion inesperada: $folder"
@@ -46,6 +55,7 @@ foreach ($folder in @($ui,(Join-Path $ui 'assets'))) {
 function Install-AppFiles {
     foreach ($file in $interfaceFiles) { Copy-Item -LiteralPath (Join-Path $app.FullName "interface\$file") -Destination (Join-Path $ui $file) -Force }
     foreach ($file in $appFiles) { Copy-Item -LiteralPath (Join-Path $app.FullName $file) -Destination $install.FullName -Force }
+    foreach ($file in $extras) { Copy-Item -LiteralPath (Join-Path $app.FullName $file) -Destination (Join-Path $install.FullName $file) -Force }
     foreach ($file in @('Start-NETIN.ps1','Abrir-NETIN.cmd')) {
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $install.FullName -Force
     }

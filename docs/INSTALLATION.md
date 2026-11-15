@@ -37,7 +37,7 @@ Run NOMAD from a folder on your own Windows PC. The [GitHub download](https://gi
 **Download and import the Markdown data as part of setup so Ham can use the full research collection.** The Windows app ZIP includes a small demo library; the complete research documents are in the repository's [`Investigation (.md)` folder](../Investigation%20%28.md%29/).
 
 1. Download the [repository ZIP](https://github.com/nxczmain/Nasa-Space-Apps/archive/refs/heads/main.zip), or use **Code → Download ZIP** on GitHub, and extract it completely.
-2. Open the extracted `Nasa-Space-Apps-main` folder. Copy the entire `Investigation (.md)` folder, including its topic subfolders and `.md` files, into your NOMAD installation folder. For example:
+2. Open the extracted repository folder. Copy the entire `Investigation (.md)` folder, including its topic subfolders and `.md` files, into your NOMAD installation folder:
 
    | Location | What belongs there |
    | --- | --- |
@@ -64,6 +64,8 @@ The [PDF originals](../investigation/) are available for checking figures, table
 | Open earlier readings, symptom history and skills | **Health** and **Records** show the demo trend and 30 days of sample check-ins, journal entries and motor results |
 | Analyze a synthetic training image | Run `ollama pull qwen3-vl:4b`, then open **Health → Physical → Ultrasound simulation**. Choose an image from `Ultrasound Samples`, confirm it is simulated and select **Analyze with Ham** |
 | Return to the selector and change the stage | Both profiles use the new current stage. Previously recorded items retain their original stage |
+
+The [20 simulated Ham conversations](HAM-SIMULATIONS.md) provide reproducible inputs for check-in, physical health, mood support and emergencies.
 
 For the emergency drill, use a demo profile with simulated data. NOMAD is a research prototype. Real emergency care follows the crew medical officer, emergency services and approved mission procedures.
 
