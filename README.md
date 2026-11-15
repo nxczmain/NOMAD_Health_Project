@@ -42,6 +42,10 @@ flowchart TD
 
 Download the Windows x64 ZIP from GitHub and extract it to a folder on your PC, such as `Documents\NETIN`. Open Ollama on that PC and run `ollama pull qwen3:4b`. Start `NETIN.exe` from the extracted folder and try Maya Chen or Mateo Ruiz. The included demo references open in **Documents**, where you can also load another Markdown folder. The [judges' guide](docs/INSTALLATION.md) covers prerequisites, demo passwords, sample questions and troubleshooting.
 
+**Install the AI's Markdown library as part of setup:** Download and extract the [repository ZIP](https://github.com/nxczmain/Nasa-Space-Apps/archive/refs/heads/main.zip), then copy its `Investigation (.md)` folder, including all topic subfolders and `.md` files, to `Documents\NETIN\Investigation (.md)` (or another local folder). In NETIN, open **Documents → Load Markdown folder**, select that complete folder, and wait until the documents appear in **Local library**. Keep Ollama running and confirm **Qwen is ready** in **Settings → Check connection**.
+
+Follow the [detailed Markdown installation steps](#install-the-markdown-data-for-the-ai) below to check the folder layout and verify that Ham can use the documents.
+
 ## Install the Markdown data for the AI
 
 The Windows app download includes a small demo library. **Download and import the Markdown data separately so Ham can consult the full project research collection.**
