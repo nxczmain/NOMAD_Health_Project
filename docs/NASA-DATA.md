@@ -54,3 +54,7 @@ NASA resources for NOMAD’s spaceflight health research. The [research library 
 - [NASA OCHMO · Technical and Medical Briefs](https://www.nasa.gov/ochmo/hsa-standards/ochmo-technical-briefs/)
 - [NASA HRP-48044 · Exploration Medical Capability Medical Scenarios (2021)](https://drive.google.com/file/d/1w1ZKw9E-RldUkqaspVnj_YhIxhRj_Oe7/view?usp=drivesdk)
 - [NASA OCHMO-MTB-007 · Venous Thrombosis in Spaceflight (2026)](https://drive.google.com/file/d/1-kTZPpydR1RTNx_zYdKEm8cKml_EAjov/view?usp=drivesdk)
+
+## Image credit
+
+- [NASA Earth Observatory · Sunrise from the Station (ISS070-E-1178)](https://science.nasa.gov/earth/earth-observatory/sunrise-from-the-station-152259/) is the source of NOMAD's Earth at sunrise backdrop. NASA credits the ISS Crew Earth Observations Facility and the Earth Science and Remote Sensing Unit at Johnson Space Center.
