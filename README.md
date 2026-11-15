@@ -161,5 +161,3 @@ The research collection covers in-flight medical conditions, mission risks, firs
 - Luiz Ruiz
 
 [Team profile on NASA Space Apps](https://www.spaceappschallenge.org/2026/find-a-team/printnombre_del_equipo/)
-
-The demo-first layout and repository guide draw on [Phoenix Eye / FlameForecast](https://github.com/jbric16/FlameForecast_Project/tree/main).
