@@ -30,7 +30,28 @@ This guide runs NETIN from a folder on your own Windows PC. The [GitHub download
    | Mateo Ruiz | Moon | `LunarDemo26` |
 
 5. Open **Daily check-in** from the Home routine. Choose **Save and finish** to save what you have recorded. If you try the **Daily photo** step, select **Take photo** to start the countdown. Select **Use photo** to save the preview or **Retake** to try again. You can continue when a camera is unavailable.
-6. In **Settings → Check connection**, look for **Qwen is ready**. The public demo references are already available in **Documents** on a fresh installation. Use **Load Markdown folder** to use your mission's authorized library or reload the included `ReferenceLibrary` folder.
+6. In **Settings → Check connection**, look for **Qwen is ready**. Then complete **Install the research Markdown library** below to give Ham access to the full project documents. The included `ReferenceLibrary` folder supplies the smaller demo library.
+
+## Install the research Markdown library
+
+**Download and import the Markdown data as part of setup so Ham can use the full research collection.** The Windows app ZIP includes a small demo library; the complete research documents are in the repository's [`Investigation (.md)` folder](../Investigation%20%28.md%29/).
+
+1. Download the [repository ZIP](https://github.com/nxczmain/Nasa-Space-Apps/archive/refs/heads/main.zip), or use **Code → Download ZIP** on GitHub, and extract it completely.
+2. Open the extracted `Nasa-Space-Apps-main` folder. Copy the entire `Investigation (.md)` folder, including its topic subfolders and `.md` files, into your NETIN installation folder. For example:
+
+   | Location | What belongs there |
+   | --- | --- |
+   | `Documents\NETIN\NETIN.exe` | The application |
+   | `Documents\NETIN\Investigation (.md)\` | The complete Markdown collection with its topic subfolders |
+
+   Another local location also works; select that folder when importing.
+3. In NETIN, sign in and open **Documents → Load Markdown folder**. Select the parent **Investigation (.md)** folder to include every topic. Confirm the folder selection if prompted.
+4. Wait for **Reading … documents** to finish. Confirm that **Local library** lists the files, then search for a topic and open a document. There are **503 research documents plus a README**, so importing the complete folder normally lists **504 Markdown files**.
+5. With Ollama running and **Settings → Check connection → Qwen is ready**, open **Assistant** and ask “What does the research library say about sleep and fatigue?” Review the reference passages included with the answer.
+
+**Import the folder after copying it.** NETIN uses the imported Markdown to retrieve relevant passages and supply context to Qwen. Use **Load Markdown folder** again after adding or editing files. Each import replaces the previously loaded library, so select the complete parent folder each time.
+
+The [PDF originals](../investigation/) are available for checking figures, tables and formatting. See the [research library guide](RESEARCH.md) for the topic index and checksums.
 
 ## A short evaluation
 
@@ -52,6 +73,6 @@ For the emergency drill, use a demo profile with simulated data. NETIN is a rese
 | Windows cannot open NETIN | Confirm that the ZIP is fully extracted and its DLLs are beside `NETIN.exe`. Check the WebView2 and .NET requirements above |
 | Ollama is offline | Launch Ollama from the Windows Start menu. Check `Invoke-RestMethod http://127.0.0.1:11434/api/tags` from PowerShell |
 | Qwen is missing | Run `ollama pull qwen3:4b` and check the connection again |
-| Answers lack document evidence | Import `ReferenceLibrary` in **Documents** and confirm the files are listed |
+| Answers lack document evidence | In **Documents → Load Markdown folder**, import `Investigation (.md)` for the complete research library or `ReferenceLibrary` for the demo. Wait for loading to finish and confirm the files are listed |
 | Old sample dates or a different stage appear | Use **Records** for all stages and select the historical stage for trends. Extract the package into a new folder for a fresh evaluation, or use **Delete** with the profile password to remove a profile and its history |
 
