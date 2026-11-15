@@ -1,96 +1,112 @@
-# NOMAD
+<p align="center">
+  <img src="app/assets/nomad-logo-dark.png" width="390" alt="NOMAD logo with a globe, a heartbeat and a spacecraft">
+</p>
 
-NOMAD is a Windows workstation for astronaut health check-ins during space missions. It combines daily observations, vital signs, a crew journal and motor skills into a local record. Ham uses Qwen through Ollama to carry on a conversation, adapt check-in questions, and consult imported mission documents.
+<h1 align="center">NOMAD</h1>
 
-[Download NOMAD for Windows](https://github.com/nxczmain/Nasa-Space-Apps/raw/refs/heads/main/downloads/NETIN-Windows-x64.zip) · [Complete setup for judges](docs/INSTALLATION.md) · [NASA Space Apps challenge](https://www.spaceappschallenge.org/2026/challenges/health-monitoring-software/)
+<p align="center"><strong>A local health workstation for astronaut crews</strong><br>
+Record daily observations, track changes over time, and prepare a handoff for the crew medical officer.</p>
 
-## Contents
+<p align="center">Built for the 2026 NASA Space Apps Challenge</p>
 
-1. [About the project](#about-the-project)
-2. [What you can evaluate](#what-you-can-evaluate)
-3. [Installation](#installation)
-4. [Install the Markdown data for the AI](#install-the-markdown-data-for-the-ai)
-5. [How it works](#how-it-works)
-6. [Repository layout](#repository-layout)
-7. [Research references](#research-references)
+<p align="center">
+  <a href="https://github.com/nxczmain/Nasa-Space-Apps/raw/refs/heads/main/downloads/NETIN-Windows-x64.zip"><strong>Download for Windows x64</strong></a>
+  · <a href="#installation">Quick start</a>
+  · <a href="#judge-walkthrough">Judge walkthrough</a>
+  · <a href="#repository-and-research">Research</a>
+  · <a href="docs/INSTALLATION.md">Full setup guide</a>
+</p>
 
-## About the project
+## The mission problem
 
-Crew members log changes in how they feel, what they measured and how well they can work. NOMAD helps them review that information and prepare a clearer handoff to the crew medical officer. The mission stage is shared across crew profiles on the same installation. Health records remain associated with each astronaut and the stage where they were recorded.
+On long missions, crew members need to recognize health changes and organize what they observed when communication with Earth may be delayed. NOMAD gives each astronaut a local record of symptoms, readings, mood and motor performance. **Ham**, the onboard assistant prototype, asks follow-up questions and retrieves relevant passages from the mission library for the crew to review. [NASA Space Apps challenge](https://www.spaceappschallenge.org/2026/challenges/health-monitoring-software/) · [NASA Human Research Program](https://www.nasa.gov/hrp/hazards/)
 
-## What you can evaluate
+## From daily check-in to crew handoff
 
 ```mermaid
-flowchart TD
-    A["Select astronaut and mission stage"] --> B["Daily check-in and journal"]
-    A --> C["Motor skills"]
-    B --> D["Health and records"]
-    C --> D
-    E["Mission Markdown"] --> F["Assistant and crew handoff"]
-    D --> F
+flowchart LR
+    A["Log observations and readings"] --> B["Review trends and history"]
+    B --> C["Prepare a crew handoff"]
+    D["Local mission library"] --> E["Ask Ham and review sources"]
+    E --> C
 ```
 
-| Area | What to try |
+| In NOMAD | What crew members can do |
 | --- | --- |
-| Home | Read the check-in recap, journal, relevant follow-ups and vital signs |
-| Assistant | Ask Ham a question from the mission library, describe how you feel, or simulate an emergency handoff |
-| Health | Explore trends, log symptoms, review motor tests and analyze a simulated ultrasound you upload under **Physical → Ultrasound simulation** |
-| Records | Browse two synthetic 30-day astronaut histories, including values, interviews and game results |
-| Documents | Load a local Markdown folder and inspect the references NOMAD uses |
+| **Home** | Follow the daily routine for a photo, check-in, motor tests and journal. Review the latest indicators and follow-ups. |
+| **Health** | Chart heart rate, blood pressure, temperature, blood glucose, sleep duration and mood. Select a region on the body map to record a symptom. |
+| **Records** | Review prior check-ins, journal entries and motor results. Each entry retains the mission stage where it was recorded. |
+| **Assistant** | Ask Ham a question about the mission library or practice an urgent crew handoff with a simulated report. |
+| **Documents** | Browse the starter references or import the complete research collection as Markdown. |
 
 ## Installation
 
-Download the Windows x64 ZIP from GitHub and extract it to a folder on your PC, such as `Documents\NETIN`. Open Ollama on that PC and run `ollama pull qwen3:4b`. Start `NETIN.exe` from the extracted folder and try Maya Chen or Mateo Ruiz. The included demo references open in **Documents**, where you can also load another Markdown folder. The [judges' guide](docs/INSTALLATION.md) covers prerequisites, demo passwords, sample questions and troubleshooting.
+**Requirements** · Windows 10 22H2 or Windows 11 (x64), Microsoft Edge WebView2 Evergreen Runtime and .NET Framework 4.8 or later. Internet access is needed for the downloads. A camera is optional. See the [full setup guide](docs/INSTALLATION.md#what-you-need) for runtime links and troubleshooting.
 
-For the optional ultrasound simulation, run `ollama pull qwen3-vl:4b` and choose a synthetic image from the included `Ultrasound Samples` folder.
+1. **Download and extract** [NETIN-Windows-x64.zip](https://github.com/nxczmain/Nasa-Space-Apps/raw/refs/heads/main/downloads/NETIN-Windows-x64.zip). In File Explorer, right-click the ZIP and choose **Extract All**. Use a writable folder such as `Documents\NETIN`.
+2. **Set up Ham.** Install and open [Ollama for Windows](https://ollama.com/download/windows). Run the commands below in PowerShell, confirm `qwen3:4b` appears in the list, and leave Ollama running. The model download is about 2.5 GB. [Qwen3 model details](https://ollama.com/library/qwen3:4b)
 
-**Install the AI's Markdown library as part of setup:** Download and extract the [repository ZIP](https://github.com/nxczmain/Nasa-Space-Apps/archive/refs/heads/main.zip), then copy its `Investigation (.md)` folder, including all topic subfolders and `.md` files, to `Documents\NETIN\Investigation (.md)` (or another local folder). In NOMAD, open **Documents → Load Markdown folder**, select that complete folder, and wait until the documents appear in **Local library**. Keep Ollama running and confirm **Qwen is ready** in **Settings → Check connection**.
+   ```powershell
+   ollama pull qwen3:4b
+   ollama list
+   ```
 
-Follow the [detailed Markdown installation steps](#install-the-markdown-data-for-the-ai) below to check the folder layout and verify that Ham can use the documents.
+3. **Open `NETIN.exe`** from the extracted folder. Keep `interface` and the WebView2 DLLs beside the executable. Choose a mission stage and sign in with a demo profile.
 
-## Install the Markdown data for the AI
+   | Mission stage | Demo astronaut | Demo password |
+   | --- | --- | --- |
+   | Earth Orbit | Maya Chen | `OrbitDemo26` |
+   | Moon | Mateo Ruiz | `LunarDemo26` |
 
-The Windows app download includes a small demo library. **Download and import the Markdown data separately so Ham can consult the full project research collection.**
+4. **Check the connection.** In **Settings → Check connection**, look for **Qwen is ready**. The ZIP already includes a starter library with five references. Open **Documents** to see them.
 
-1. Download the [repository ZIP](https://github.com/nxczmain/Nasa-Space-Apps/archive/refs/heads/main.zip), or use **Code → Download ZIP** on the repository page. Extract the ZIP completely.
-2. Inside the extracted `Nasa-Space-Apps-main` folder, find [`Investigation (.md)`](Investigation%20%28.md%29/). Copy that entire folder, including all its topic subfolders and `.md` files, into your NOMAD installation folder. For the installation example above, use `Documents\NETIN\Investigation (.md)`.
+### Import the full Markdown research library
 
-   | Example location | Contents |
-   | --- | --- |
-   | `Documents\NETIN\NETIN.exe` | The NOMAD application |
-   | `Documents\NETIN\Investigation (.md)\` | The complete Markdown folder and its topic subfolders |
+1. Download and extract the [repository ZIP](https://github.com/nxczmain/Nasa-Space-Apps/archive/refs/heads/main.zip). Copy the entire `Investigation (.md)` folder, with its subfolders, into your NOMAD folder or another local location.
+2. In NOMAD, open **Documents → Load Markdown folder** and select `Investigation (.md)`. Wait for **Local library** to show **504 Markdown files** (503 research documents and the collection README).
+3. With Ollama running, open **Assistant** and ask “What does the research library say about sleep and fatigue?” Use **Open relevant passage** in Ham’s answer to check the source.
 
-   You can keep the Markdown folder in another local location; select that location in the next step.
+Each import replaces the loaded library. Select the complete parent folder when updating it. [Research library guide](docs/RESEARCH.md)
 
-3. Start `NETIN.exe`, sign in, and open **Documents → Load Markdown folder**. Select the parent **Investigation (.md)** folder so NOMAD includes every topic subfolder. Confirm the folder selection if Windows asks.
-4. Wait for **Reading … documents** to finish. In **Local library**, confirm that the documents are listed, search for a topic, and open a document. The collection has **503 research documents plus its README**, so importing the whole folder normally lists **504 Markdown files**.
-5. Keep Ollama running. In **Settings → Check connection**, confirm **Qwen is ready**, then open **Assistant** and ask a document-based question, such as “What does the research library say about sleep and fatigue?” Review the reference passages shown with the answer.
+## Judge walkthrough
 
-**Complete the import in step 3 after copying the files.** NOMAD uses the imported Markdown text to find relevant passages and provide context to Qwen. The PDF originals are available in [`investigation`](investigation/) for checking figures, tables and formatting.
+Start with **Maya Chen · Earth Orbit** to review a 30-day synthetic history and try the daily workflow. **Mateo Ruiz · Moon** offers a second mission context.
 
-Use **Load Markdown folder** again after adding or editing source files. Loading a folder replaces the previously imported library, so select the complete `Investigation (.md)` folder each time. See the [research library guide](docs/RESEARCH.md) for the topic index and file checksums.
+| Try this | What to look for |
+| --- | --- |
+| **Home → Daily check-in**. Describe a simulated change in sleep or energy, then select **Save and finish**. | Find the check-in recap and follow-ups on **Home**. |
+| **Health → General**. Under **Measurement trend**, choose **Sleep** and switch between **7 days** and **30 days**. Open **Records** to inspect a previous check-in. | Compare the plotted readings with the observations saved for a date. |
+| **Assistant**. Ask “How can an irregular sleep schedule affect my ability to work?” | Read Ham’s answer and open the cited reference passages. |
+| **Assistant**. In a demo profile, send “My crewmate is unresponsive but breathing. What should I do?” | Inspect the prototype’s urgent alert and the reported observation it can extract for handoff. |
+
+<details>
+<summary><strong>Optional demo · Synthetic ultrasound</strong></summary>
+
+1. Run `ollama pull qwen3-vl:4b` with Ollama 0.12.7 or later running. [Qwen3-VL model details](https://ollama.com/library/qwen3-vl:4b)
+2. Open **Health → Physical → Ultrasound simulation**.
+3. Choose `phantom-dark-target.png` from `Ultrasound Samples`, confirm it is simulated, and select **Analyze with Ham**.
+
+<img src="app/Ultrasound%20Samples/phantom-dark-target.png" width="360" alt="Bundled training image showing a dark target in a simulated ultrasound scan">
+
+</details>
 
 ## How it works
 
-NOMAD runs in a WinForms shell with WebView2. It matches questions to local Markdown passages and sends relevant text to Qwen on the same machine. Emergency reports first trigger a built-in action. For an unresponsive person, the model can then extract a directly reported observation for the medical handoff. See the [architecture notes](docs/ARCHITECTURE.md) for the data flow and technology stack.
+**Desktop and records.** C# WinForms hosts the HTML, CSS and JavaScript interface in WebView2. Browser storage holds the local crew records, daily photos and imported library. The current mission stage is shared on the installation. Saved observations retain their original stage.
 
-## Repository layout
+**Ham and the mission library.** NOMAD retrieves relevant Markdown passages and passes them to Qwen through Ollama on the same machine. Once setup downloads are complete, the app and model can run locally. Recognized urgent reports trigger a built-in alert before model processing. [Architecture and build instructions](docs/ARCHITECTURE.md)
 
-| Directory | Contents |
+## Repository and research
+
+| Location | Contents |
 | --- | --- |
-| [app](app/) | Desktop host, interface, model integration and build script |
-| [docs](docs/) | Installation and evaluation guide, architecture notes |
-| [downloads](downloads/) | Windows x64 ZIP and its SHA-256 checksum |
-| [references](references/) | Public Markdown references for the demo |
-| [investigation](investigation/) | 510 original research PDFs, grouped by topic |
-| [Investigation (.md)](Investigation%20%28.md%29/) | 503 Markdown research documents and the import manifest |
+| [`app/`](app/) | Desktop host, interface, Ollama integration and build script |
+| [`docs/`](docs/) | Installation, architecture and research guides |
+| [`downloads/`](downloads/) | Windows x64 ZIP and [SHA-256 checksum](downloads/SHA256SUMS.txt) |
+| [`references/`](references/) | Five starter references for the demo |
+| [`Investigation (.md)/`](Investigation%20%28.md%29/) | 503 importable research documents and conversion manifest |
+| [`investigation/`](investigation/) | 510 original PDFs, including figures and tables |
 
-## Research references
+The research collection covers in-flight medical conditions, mission risks, first aid and standards. The library guide maps the topics and links to the source files. [Research library](docs/RESEARCH.md) · [NASA in-flight medical care](https://www.nasa.gov/ochmo/health-and-medical-systems/in-flight-medical-care/)
 
-The complete [research library](docs/RESEARCH.md) includes PDF originals and their Markdown counterparts. To use it in NOMAD, open **Documents** and select the local `Investigation (.md)` folder. The guide lists the categories, document counts and file checksums.
-
-- NASA Human Research Program [human spaceflight hazards](https://www.nasa.gov/hrp/hazards/) and [risks from inadequate sleep and irregular schedules](https://www.nasa.gov/reference/risk-from-inadequate-sleep-and-irregular-schedules/).
-- NASA Office of the Chief Health and Medical Officer [in-flight medical care](https://www.nasa.gov/ochmo/health-and-medical-systems/in-flight-medical-care/).
-- American Red Cross [first aid for an unresponsive person](https://www.redcross.org/take-a-class/resources/learn-first-aid/unresponsive-and-breathing-person), a terrestrial reference.
-
-NOMAD is a prototype for Space Apps. Operational use requires clinical validation and mission approval. The public download uses synthetic records and a small public demo library.
+> **Prototype status.** The demo uses synthetic crew records and ultrasound images. Operational use requires clinical validation and mission approval.
