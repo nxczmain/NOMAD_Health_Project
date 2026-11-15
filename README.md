@@ -9,9 +9,10 @@ NETIN is a Windows workstation for astronaut health check-ins during space missi
 1. [About the project](#about-the-project)
 2. [What you can evaluate](#what-you-can-evaluate)
 3. [Installation](#installation)
-4. [How it works](#how-it-works)
-5. [Repository layout](#repository-layout)
-6. [Research references](#research-references)
+4. [Install the Markdown data for the AI](#install-the-markdown-data-for-the-ai)
+5. [How it works](#how-it-works)
+6. [Repository layout](#repository-layout)
+7. [Research references](#research-references)
 
 ## About the project
 
@@ -40,6 +41,28 @@ flowchart TD
 ## Installation
 
 Download the Windows x64 ZIP from GitHub and extract it to a folder on your PC, such as `Documents\NETIN`. Open Ollama on that PC and run `ollama pull qwen3:4b`. Start `NETIN.exe` from the extracted folder and try Maya Chen or Mateo Ruiz. The included demo references open in **Documents**, where you can also load another Markdown folder. The [judges' guide](docs/INSTALLATION.md) covers prerequisites, demo passwords, sample questions and troubleshooting.
+
+## Install the Markdown data for the AI
+
+The Windows app download includes a small demo library. **Download and import the Markdown data separately so Ham can consult the full project research collection.**
+
+1. Download the [repository ZIP](https://github.com/nxczmain/Nasa-Space-Apps/archive/refs/heads/main.zip), or use **Code → Download ZIP** on the repository page. Extract the ZIP completely.
+2. Inside the extracted `Nasa-Space-Apps-main` folder, find [`Investigation (.md)`](Investigation%20%28.md%29/). Copy that entire folder, including all its topic subfolders and `.md` files, into your NETIN installation folder. For the installation example above, use `Documents\NETIN\Investigation (.md)`.
+
+   | Example location | Contents |
+   | --- | --- |
+   | `Documents\NETIN\NETIN.exe` | The NETIN application |
+   | `Documents\NETIN\Investigation (.md)\` | The complete Markdown folder and its topic subfolders |
+
+   You can keep the Markdown folder in another local location; select that location in the next step.
+
+3. Start `NETIN.exe`, sign in, and open **Documents → Load Markdown folder**. Select the parent **Investigation (.md)** folder so NETIN includes every topic subfolder. Confirm the folder selection if Windows asks.
+4. Wait for **Reading … documents** to finish. In **Local library**, confirm that the documents are listed, search for a topic, and open a document. The collection has **503 research documents plus its README**, so importing the whole folder normally lists **504 Markdown files**.
+5. Keep Ollama running. In **Settings → Check connection**, confirm **Qwen is ready**, then open **Assistant** and ask a document-based question, such as “What does the research library say about sleep and fatigue?” Review the reference passages shown with the answer.
+
+**Complete the import in step 3 after copying the files.** NETIN uses the imported Markdown text to find relevant passages and provide context to Qwen. The PDF originals are available in [`investigation`](investigation/) for checking figures, tables and formatting.
+
+Use **Load Markdown folder** again after adding or editing source files. Loading a folder replaces the previously imported library, so select the complete `Investigation (.md)` folder each time. See the [research library guide](docs/RESEARCH.md) for the topic index and file checksums.
 
 ## How it works
 
