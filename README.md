@@ -7,19 +7,39 @@
 <p align="center"><strong>A local health workstation for astronaut crews</strong><br>
 Record daily observations, track changes over time, and prepare a handoff for the crew medical officer.</p>
 
-<p align="center">Built for the 2026 NASA Space Apps Challenge</p>
+<p align="center">Built for the 2026 NASA Space Apps Challenge · <a href="https://www.spaceappschallenge.org/2026/find-a-team/printnombre_del_equipo/">Team page</a></p>
 
 <p align="center">
   <a href="https://github.com/nxczmain/Nasa-Space-Apps/raw/refs/heads/main/downloads/NETIN-Windows-x64.zip"><strong>Download for Windows x64</strong></a>
   · <a href="#installation">Quick start</a>
   · <a href="#judge-walkthrough">Judge walkthrough</a>
   · <a href="#repository-and-research">Research</a>
-  · <a href="docs/INSTALLATION.md">Full setup guide</a>
+  · <a href="#see-nomad-in-action">Screenshots</a>
 </p>
 
 ## The mission problem
 
 On long missions, crew members need to recognize health changes and organize what they observed when communication with Earth may be delayed. NOMAD gives each astronaut a local record of symptoms, readings, mood and motor performance. **Ham**, the onboard assistant prototype, asks follow-up questions and retrieves relevant passages from the mission library for the crew to review. [NASA Space Apps challenge](https://www.spaceappschallenge.org/2026/challenges/health-monitoring-software/) · [NASA Human Research Program](https://www.nasa.gov/hrp/hazards/)
+
+## See NOMAD in action
+
+Maya Chen’s Earth Orbit demo shows the daily health routine and the latest simulated readings.
+
+![NOMAD Home screen with Maya Chen’s Earth Orbit profile, daily routine and six health indicators](docs/images/nomad-home.png)
+
+<details>
+<summary><strong>Health · Review a seven-day heart rate trend</strong></summary>
+
+![NOMAD Health screen with the latest measurements and a seven-day chart of simulated heart rate](docs/images/nomad-health.png)
+
+</details>
+
+<details>
+<summary><strong>Assistant · Chat with Ham</strong></summary>
+
+![NOMAD Assistant screen showing a demo conversation with Ham and the read-aloud controls](docs/images/nomad-assistant.png)
+
+</details>
 
 ## From daily check-in to crew handoff
 
@@ -110,3 +130,15 @@ Start with **Maya Chen · Earth Orbit** to review a 30-day synthetic history and
 The research collection covers in-flight medical conditions, mission risks, first aid and standards. The library guide maps the topics and links to the source files. [Research library](docs/RESEARCH.md) · [NASA in-flight medical care](https://www.nasa.gov/ochmo/health-and-medical-systems/in-flight-medical-care/)
 
 > **Prototype status.** The demo uses synthetic crew records and ultrasound images. Operational use requires clinical validation and mission approval.
+
+## Team
+
+`print("Nombre del Equipo")`
+
+- Nicolas Jauregui
+- Oscar Melendez
+- Andrik Porchas
+- Marco Alvarado
+- Luiz Ruiz
+
+[Team profile on NASA Space Apps](https://www.spaceappschallenge.org/2026/find-a-team/printnombre_del_equipo/)
