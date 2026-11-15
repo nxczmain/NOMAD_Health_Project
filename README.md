@@ -39,7 +39,7 @@ flowchart TD
 
 ## Installation
 
-Download and extract the Windows x64 ZIP. Open Ollama and run `ollama pull qwen3:4b` before using the model. Start `NETIN.exe`, try Maya Chen or Mateo Ruiz, then import the included `ReferenceLibrary` folder from **Documents**. The [judges' guide](docs/INSTALLATION.md) includes prerequisites, demo passwords, sample questions, troubleshooting and build instructions.
+Download the Windows x64 ZIP from GitHub and extract it to a folder on your PC, such as `Documents\NETIN`. Open Ollama on that PC and run `ollama pull qwen3:4b`. Start `NETIN.exe` from the extracted folder, try Maya Chen or Mateo Ruiz, then import the included `ReferenceLibrary` folder from **Documents**. The [judges' guide](docs/INSTALLATION.md) covers prerequisites, demo passwords, sample questions and troubleshooting.
 
 ## How it works
 
@@ -53,7 +53,6 @@ NETIN runs in a WinForms shell with WebView2. It matches questions to local Mark
 | [docs](docs/) | Installation and evaluation guide, architecture notes |
 | [downloads](downloads/) | Windows x64 ZIP and its SHA-256 checksum |
 | [references](references/) | Public Markdown references for the demo |
-| [portable](portable/) | Launcher and update scripts for existing USB installations |
 
 ## Research references
 

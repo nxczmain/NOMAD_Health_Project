@@ -26,3 +26,14 @@ The two demo profiles are synthetic. Readings flagged for review in the demo use
 | Local model | Ollama with `qwen3:4b` |
 | Local records | WebView2 local storage and IndexedDB |
 | Distribution | Windows PowerShell build and a Windows x64 ZIP |
+
+## Build from source
+
+1. Download or clone the repository. Download [Microsoft.Web.WebView2 1.0.2151.40](https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.2151.40) as a `.nupkg`.
+2. From the root of the repository, run this command in Windows PowerShell.
+
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\app\desktop\Build.ps1 -WebView2Package .\Microsoft.Web.WebView2.1.0.2151.40.nupkg -OutputDirectory .\build
+   ```
+
+3. Open `build\NETIN.exe` and follow the Ollama setup in the [installation guide](INSTALLATION.md). In **Documents**, select the repository's `references` folder or your mission Markdown folder.

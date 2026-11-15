@@ -1,5 +1,7 @@
 # Install and evaluate NETIN on Windows
 
+This guide runs NETIN from a folder on your own Windows PC. The [GitHub download](https://github.com/nxczmain/Nasa-Space-Apps/raw/refs/heads/main/downloads/NETIN-Windows-x64.zip) includes the app, two demo profiles and the reference library used in this walkthrough. Install Ollama and Qwen on the same PC.
+
 ## What you need
 
 - A Windows 10 22H2 or Windows 11 computer with an x64 processor. Run this on a local Windows session.
@@ -10,7 +12,7 @@
 
 ## Download and run
 
-1. Download [NETIN-Windows-x64.zip](https://github.com/nxczmain/Nasa-Space-Apps/raw/refs/heads/main/downloads/NETIN-Windows-x64.zip). This is the runnable package. Extract the entire ZIP into a writable folder, such as `Documents\NETIN`.
+1. Download [NETIN-Windows-x64.zip](https://github.com/nxczmain/Nasa-Space-Apps/raw/refs/heads/main/downloads/NETIN-Windows-x64.zip). Right-click it, choose **Extract All**, and extract it to a folder you can write to on your PC, such as `Documents\NETIN`.
 2. Install and open Ollama. Then open a new PowerShell window and run:
 
    ```powershell
@@ -53,15 +55,3 @@ For the emergency drill, use a demo profile with simulated data. NETIN is a rese
 | Answers lack document evidence | Import `ReferenceLibrary` in **Documents** and confirm the files are listed |
 | Old sample dates or a different stage appear | Use **Records** for all stages and select the historical stage for trends. Extract the package into a new folder for a fresh evaluation, or use **Delete** with the profile password to remove a profile and its history |
 
-## Build from source
-
-1. Download the repository through GitHub or clone it. Use Windows PowerShell and download [Microsoft.Web.WebView2 1.0.2151.40](https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.2151.40) as a `.nupkg`.
-2. From the root of the repository, run:
-
-   ```powershell
-   powershell -NoProfile -ExecutionPolicy Bypass -File .\app\desktop\Build.ps1 -WebView2Package .\Microsoft.Web.WebView2.1.0.2151.40.nupkg -OutputDirectory .\build
-   ```
-
-3. Open `build\NETIN.exe` and follow the Ollama and model steps above. For Documents, select the repository's `references` folder or your own mission Markdown folder.
-
-Existing Kingston installations use the scripts under [portable](../portable/). The judges' ZIP uses a portable WebView2 profile inside its own folder and runs against the standard Windows Ollama service. Detailed data flow appears in [the architecture notes](ARCHITECTURE.md).
