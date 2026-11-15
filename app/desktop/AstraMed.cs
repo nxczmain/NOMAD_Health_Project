@@ -12,7 +12,7 @@ using Microsoft.Web.WebView2.WinForms;
 
 [assembly: AssemblyTitle("NETIN")]
 [assembly: AssemblyDescription("Astronaut health workstation")]
-[assembly: AssemblyVersion("3.0.0.0")]
+[assembly: AssemblyVersion("3.1.0.0")]
 
 internal static class Program
 {
@@ -216,7 +216,7 @@ internal sealed class MissionWindow : Form
                 speech = new SpeechSynthesizer();
                 foreach (InstalledVoice voice in speech.GetInstalledVoices())
                 {
-                    if (!voice.Enabled || voice.VoiceInfo.Culture.TwoLetterISOLanguageName != "es") continue;
+                    if (!voice.Enabled || voice.VoiceInfo.Culture.TwoLetterISOLanguageName != "en") continue;
                     speech.SelectVoice(voice.VoiceInfo.Name);
                     break;
                 }

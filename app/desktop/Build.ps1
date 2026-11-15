@@ -16,16 +16,15 @@ if ($PSCmdlet.ParameterSetName -eq 'Package') {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $sdk = [IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath $WebView2Package).Path)
     try {
-        $assets = @(
-            'lib/net462/Microsoft.Web.WebView2.Core.dll'
-            'lib/net462/Microsoft.Web.WebView2.WinForms.dll'
-            'runtimes/win-x64/native/WebView2Loader.dll'
-        )
-        foreach ($asset in $assets) {
-            $entry = $sdk.GetEntry($asset)
-            if (!$entry) { throw "The WebView2 package is missing $asset." }
+        foreach ($name in @('Microsoft.Web.WebView2.Core.dll','Microsoft.Web.WebView2.WinForms.dll')) {
+            $entry = $sdk.GetEntry("lib/net462/$name")
+            if (!$entry) { $entry = $sdk.GetEntry("lib/net45/$name") }
+            if (!$entry) { throw "The WebView2 package is missing the .NET Framework assembly $name." }
             [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, (Join-Path $output $entry.Name), $true)
         }
+        $loader = $sdk.GetEntry('runtimes/win-x64/native/WebView2Loader.dll')
+        if (!$loader) { throw 'The WebView2 package is missing the x64 loader.' }
+        [IO.Compression.ZipFileExtensions]::ExtractToFile($loader, (Join-Path $output $loader.Name), $true)
         $license = $sdk.Entries | Where-Object { $_.FullName -match '^(LICENSE|LICENSE\.txt)$' } | Select-Object -First 1
         if ($license) {
             [IO.Compression.ZipFileExtensions]::ExtractToFile($license, (Join-Path $output 'WebView2-LICENSE.txt'), $true)

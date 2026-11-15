@@ -7,11 +7,13 @@ const Motor = NetinMotor;
 const $ = (id) => document.getElementById(id);
 const legacyCrew = 'astramed-v1';
 const rosterKey = 'netin-roster-v1';
+const deletedCrewKey = 'netin-deleted-crew-v1';
+const missionStageKey = 'netin-mission-stage-v1';
 const isCrewKey = key => typeof key === 'string' && /^netin-crew:[\da-f-]{36}$/.test(key);
-const routes = [['panel','Home'],['bot','Asistente'],['health','Salud'],['records','Registros']];
+const routes = [['panel','Home'],['bot','Assistant'],['health','Health'],['records','Records']];
 const utilityRoutes = [['guias','Documents'],['settings','Settings']];
 const subRoutes = ['check','motor','journal','semana'];
-const formatDay = (key) => new Date(key + 'T12:00:00').toLocaleDateString('es-MX',{month:'short',day:'numeric'});
+const formatDay = (key) => new Date(key + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
 const escape = (value = '') => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[char]);
 const datedTurns = turns => turns.map(turn => ({...turn,date:turn.date || E.dateKey(),env:turn.env || state.env}));
 const button = (label, action, kind = '', attrs = '') => '<button type="button" class="button '+kind+'" data-action="'+action+'" '+attrs+'>'+label+'</button>';
@@ -53,6 +55,7 @@ let motorResult;
 let motorMessage = '';
 let motorGame = 'dock';
 let rosterReset = false;
+let deletedCrew = new Set();
 
 function readCrew(key) {
   const previous = JSON.parse(localStorage.getItem(key));
@@ -78,7 +81,7 @@ async function resetCrewData() {
   const examples = CrewProfiles.demoKeys.map(key => [key,JSON.stringify(CrewProfiles.demoState(key))]);
   await CrewCamera.clearPhotos();
   for (const key of keys) {
-    if (key === legacyCrew || key === rosterKey || isCrewKey(key) || CrewProfiles.isDemo(key)) localStorage.removeItem(key);
+    if (key === legacyCrew || key === rosterKey || key === deletedCrewKey || isCrewKey(key) || CrewProfiles.isDemo(key)) localStorage.removeItem(key);
   }
   for (const [key,profile] of examples) localStorage.setItem(key,profile);
 }
@@ -113,28 +116,29 @@ function home() {
     try {
       const {profile} = readCrew(key);
       const initials = profile.name.trim().split(/\s+/).slice(0, 2).map(part => Array.from(part)[0]).join('');
-      return '<button type="button" class="crew-option" data-action="enter-crew" data-id="'+escape(key)+'">'+
+      return '<div class="crew-row"><button type="button" class="crew-option" data-action="enter-crew" data-id="'+escape(key)+'">'+
         '<span class="crew-initials" aria-hidden="true">'+escape(initials)+'</span><span><strong>'+escape(profile.name)+'</strong><small>'+escape(profile.role)+
-        (CrewProfiles.isDemo(key) ? ' · Demostración' : '')+'</small></span><span aria-hidden="true">→</span></button>';
+        (CrewProfiles.isDemo(key) ? ' · Demo' : '')+'</small></span><span aria-hidden="true">→</span></button>'+
+        button('Delete','delete-crew','crew-delete compact','data-id="'+escape(key)+'" aria-label="Delete '+escape(profile.name)+'"')+'</div>';
     } catch {
-      return '<p class="notice">No se pudo leer un perfil local.</p>';
+      return '<p class="notice">Could not read a local profile.</p>';
     }
   }).join('');
-  return '<section class="crew-home"><div class="crew-picker"><h1>Elige tu perfil</h1><p class="muted">Selecciona la etapa de misión y el astronauta.</p>'+
-    (rosterReset ? '<p class="notice" role="status">Perfiles restablecidos. Cada astronauta de prueba tiene 30 días de datos.</p>' : '')+
-    stageField('login-stage',stageChoice)+'<div class="crew-options">'+cards+'</div>'+button('Crear perfil','new-profile')+'</div></section>';
+  return '<section class="crew-home"><div class="crew-picker"><h1>Choose your profile</h1><p class="muted">Select an astronaut to sign in.</p>'+
+    (rosterReset ? '<p class="notice" role="status">Profiles reset. Each demo astronaut has 30 days of records.</p>' : '')+
+    '<div class="crew-options">'+cards+'</div>'+button('Create profile','new-profile')+'</div></section>';
 }
 
 function cameraView() {
   const {error, pendingPhoto, retake, working} = cameraScreen;
-  return pageHead('DAILY HEALTH LOG','Foto diaria',escape(state.profile.name)+' · '+formatDay(E.dateKey()))+
-    '<section class="work-sheet photo-capture">'+(pendingPhoto ? '<img src="'+validPhoto(pendingPhoto)+'" alt="Vista previa de la foto">' :
-      error ? '' : '<video id="photo-video" autoplay muted playsinline aria-label="Vista previa de la cámara"></video>')+
-    '<p id="photo-status" role="status">'+(error ? escape(error) : pendingPhoto ? (working ? 'Guardando tu foto…' : 'Revisa tu nueva foto.') : 'Preparing your daily photo…')+'</p><div class="actions">'+
-    (pendingPhoto ? button('Usar foto','use-camera','primary',working ? 'disabled' : '') : '')+
-    (error || pendingPhoto ? button(pendingPhoto ? 'Volver a tomar' : 'Reintentar cámara','retry-camera',pendingPhoto ? '' : 'primary',working ? 'disabled' : '') : '')+
+  return pageHead('DAILY HEALTH LOG','Daily photo',escape(state.profile.name)+' · '+formatDay(E.dateKey()))+
+    '<section class="work-sheet photo-capture">'+(pendingPhoto ? '<img src="'+validPhoto(pendingPhoto)+'" alt="Photo preview">' :
+      error ? '' : '<video id="photo-video" autoplay muted playsinline aria-label="Camera preview"></video>')+
+    '<p id="photo-status" role="status">'+(error ? escape(error) : pendingPhoto ? (working ? 'Saving your photo…' : 'Review your new photo.') : 'Preparing your daily photo…')+'</p><div class="actions">'+
+    (pendingPhoto ? button('Use photo','use-camera','primary',working ? 'disabled' : '') : '')+
+    (error || pendingPhoto ? button(pendingPhoto ? 'Retake photo' : 'Retry camera','retry-camera',pendingPhoto ? '' : 'primary',working ? 'disabled' : '') : '')+
     (retake ? button('Cancel','skip-camera','',working && pendingPhoto ? 'disabled' : '') :
-      button('Continuar sin foto','skip-camera')+button('Volver a perfiles','exit-crew'))+'</div></section>';
+      button('Continue without photo','skip-camera')+button('Back to profiles','exit-crew'))+'</div></section>';
 }
 
 function showRoute(route, focus = 'main') {
@@ -142,22 +146,52 @@ function showRoute(route, focus = 'main') {
   history.replaceState(null, '', '#'+route);
   render();
   window.scrollTo({top:0,behavior:'instant'});
-  $(focus)?.focus();
+  $(focus)?.focus({preventScroll:true});
 }
 
 function loginModal(key) {
   if (session || !crewKeys.includes(key)) return;
-  if (!Object.hasOwn(stages,stageChoice)) {
-    $('login-stage').focus();
-    return notify('Elige la etapa de misión.');
-  }
   let crew;
   try { crew = readCrew(key); }
   catch { notify('The crew profile could not be opened.'); return; }
   const setup = !crew.auth;
-  openModal(setup ? 'Crea tu contraseña' : 'Inicia sesión','<form id="login-form" data-crew="'+escape(key)+'"><p>'+escape(crew.profile.name)+' · '+stages[stageChoice]+'</p>'+
-    passwordFields(setup)+'<p class="error" role="alert"></p><button class="button primary" type="submit">Entrar</button></form>');
+  openModal(setup ? 'Create your password' : 'Sign in','<form id="login-form" data-crew="'+escape(key)+'"><p>'+escape(crew.profile.name)+' · '+stages[stageChoice]+'</p>'+
+    passwordFields(setup)+'<p class="error" role="alert"></p><button class="button primary" type="submit">Sign in</button></form>');
   $('login-form').elements.password.focus();
+}
+
+function deleteCrewModal(key) {
+  if (session || !crewKeys.includes(key)) return;
+  let crew;
+  try { crew = readCrew(key); }
+  catch { notify('The crew profile could not be opened.'); return; }
+  openModal('Delete profile','<form id="delete-crew-form" data-crew="'+escape(key)+'"><p>Delete '+escape(crew.profile.name)+
+    ' and all of their local records, conversations and photos?</p>'+(crew.auth ? passwordFields(false) : '')+
+    '<p class="error" role="alert"></p><button class="button primary" type="submit">Delete profile</button></form>');
+}
+
+async function submitDeleteCrew(form) {
+  const key = form.dataset.crew;
+  if (session || !crewKeys.includes(key) || form.dataset.pending) return;
+  const submit = form.querySelector('[type="submit"]');
+  submit.disabled = true;
+  form.dataset.pending = 'true';
+  try {
+    const crew = readCrew(key);
+    if (crew.auth && !await CrewProfiles.verifyPassword(form.elements.password.value,crew.auth)) throw new Error('Incorrect password.');
+    if (!form.isConnected || !$('modal').open || session) return;
+    await CrewCamera.clearPhotos(key);
+    const removed = new Set([...deletedCrew,key]);
+    localStorage.setItem(deletedCrewKey,JSON.stringify([...removed]));
+    localStorage.removeItem(key);
+    localStorage.setItem(rosterKey,JSON.stringify(crewKeys.filter(item => item !== key && isCrewKey(item))));
+    deletedCrew = removed;
+    crewKeys = crewKeys.filter(item => item !== key);
+    if ($('modal').open && form.isConnected) $('modal').close();
+    render();
+    notify('Profile deleted.');
+  } catch (error) { form.querySelector('.error').textContent = error.message; }
+  finally { delete form.dataset.pending; submit.disabled = false; }
 }
 
 async function submitLogin(form) {
@@ -174,7 +208,7 @@ async function submitLogin(form) {
     const stored = localStorage.getItem(key);
     const setup = !crew.auth;
     if (crew.auth) {
-      if (!await CrewProfiles.verifyPassword(password,crew.auth)) throw new Error('Contraseña incorrecta.');
+      if (!await CrewProfiles.verifyPassword(password,crew.auth)) throw new Error('Incorrect password.');
     } else {
       if (!form.elements.confirmation) throw new Error('Close this dialog and select your profile again.');
       crew.auth = await CrewProfiles.createPassword(password,form.elements.confirmation.value);
@@ -229,7 +263,7 @@ function stopSpeech() {
 function speakReply(turn) {
   if (turn?.role !== 'assistant' || !turn.content) return;
   stopSpeech();
-  const text = turn.sections ? AI.titles(turn.sections).map(([key,title]) => title+'. '+turn.sections[key]).join('\n') : turn.content;
+  const text = turn.paragraph || (turn.sections ? summaryParagraph(turn) : turn.content);
   voiceText = text.replace(/\[\d+\]/g,'').replace(/ +([.,])/g,'$1');
   globalThis.chrome?.webview?.postMessage('netin-speak\n'+voiceRequest+'\n'+voiceText);
 }
@@ -250,7 +284,7 @@ async function openCamera(destination, retake = false) {
     crewPortrait = latest;
     if (retake || (!simulation() && !dailyPhotos.has(date))) {
       const src = await CrewCamera.capture($('photo-video'), signal, seconds => {
-        $('photo-status').textContent = 'Mira a la cámara. Tomaré la foto en '+seconds+'…';
+        $('photo-status').textContent = 'Look at the camera. Taking your photo in'+seconds+'…';
       });
       if (signal.aborted) return;
       const captured = new Date();
@@ -283,7 +317,7 @@ async function saveCameraPhoto(screen, photo) {
     if (screen.controller.signal.aborted) return;
     dailyPhotos.set(saved.date,saved);
     if (!crewPortrait || saved.date >= crewPortrait.date) crewPortrait = saved;
-    notify('Foto diaria guardada.');
+    notify('Daily photo saved.');
     finishCamera();
   } catch {
     if (screen.controller.signal.aborted) return;
@@ -406,6 +440,33 @@ function temperatureAlert(entry) {
   }, [{ref:1,title:'CDC · Preventing Hypothermia',url:E.lowTemperatureSource}]);
 }
 
+function emergencyAnswer(report) {
+  if (!CI.unresponsiveReport(report)) return intakeSummary(null,'symptoms');
+  const earth = stageChoice === 'earth';
+  const reportText = report.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[’']/g,'');
+  const absent = /\b(?:not breathing|isnt breathing|stopped breathing|only gasping|no respira|dejo de respirar|solo jadea)\b/.test(reportText);
+  const action = earth ? 'Call local emergency services now.' :
+    'Alert the crew medical officer and activate the onboard emergency procedure now.';
+  const breathing = absent ?
+    'If they are not breathing normally or are only gasping, start CPR and use an AED as soon as available under your emergency procedure.' :
+    'Stay with them and keep checking their breathing. If it stops or they are only gasping, start CPR and use an AED as soon as available under your emergency procedure.';
+  const positioning = earth && !absent ? ' If breathing normally, place them on their side if you can do so safely and do not suspect a head, neck or back injury.' : '';
+  const paragraph = action+' Say the person is unresponsive and describe their breathing. '+breathing+positioning;
+  return {text:paragraph,paragraph,urgent:true,
+    sources:[{ref:1,title:'American Red Cross · Unresponsive and breathing',url:'https://www.redcross.org/take-a-class/resources/learn-first-aid/unresponsive-and-breathing-person'}]};
+}
+
+function checkFollowUps(entry) {
+  const items = {};
+  if (entry.values.impact === 'task') items.duties = 'Tell the crew medical officer which duties are affected and what changed.';
+  if (entry.values.moodImpact === 'task') items.mood = 'Discuss the reported impact on focus and duties with the crew medical officer.';
+  const concern = entry.details?.find(item => item.title === 'Symptoms')?.answer;
+  if (concern && !CI.routineResponse(concern) && CI.symptomTopic({answers:{symptoms:concern}}) !== 'general') {
+    items.symptoms = 'Review the reported symptom if it is ongoing or worsening.';
+  }
+  return items;
+}
+
 function intakeSummary(entry, urgent) {
   if (urgent === 'temperature') return temperatureAlert(entry);
   if (urgent) return AI.summary({
@@ -418,39 +479,31 @@ function intakeSummary(entry, urgent) {
     risks:'The reported warning sign may indicate an emergency [1].'
   }, [{ref:1,title:'MedlinePlus · Recognizing Medical Emergencies',url:CI.emergencySource}]);
   const result = E.evaluate(entry,state.profile);
-  const risk = entry.values.impact === 'task' ? 'You reported that symptoms affect mission duties. Share which tasks became harder.' :
-    entry.values.impact === 'mild' ? 'The reported symptoms warrant follow-up if they persist, worsen, or interfere with duties.' :
-      'Changes from the demonstration baseline need context. Skipped measurements leave gaps in the record.';
-  return AI.summary({
-    immediateActions:result.attention === 'review' ? 'Share the reported changes with the crew medical officer.' : 'Record any new or worsening symptoms.',
-    evidence:'You recorded '+result.coverage+' of '+E.metrics.length+' measurements.',
-    whyItMatters:risk,
-    recommendations:result.action,
-    measurements:E.metrics.filter(metric => entry.values[metric.key] != null).map(metric =>
-      metric.label+' '+E.format(entry.values[metric.key])+' '+metric.unit).join(', ') || 'No measurements were reported.',
-    indicators:result.flags.length ? result.flags.join('; ') : 'No readings were flagged by the demonstration reference.',
-    risks:risk
-  });
+  const followUps = Object.values(checkFollowUps(entry));
+  const text = ['Your check-in includes '+result.coverage+' of '+E.metrics.length+' measurements.',
+    result.flags.length ? 'Review the recorded '+result.flags.join(', ')+'.' : '',
+    followUps[0] || (result.coverage < E.metrics.length ? 'Add the missing measurements when available.' : '')].filter(Boolean).join(' ');
+  return {text,paragraph:text,followUps};
 }
 
 function intakeTranscript(current, prompt) {
   const turns = [...current.turns,...(prompt ? [{role:'assistant',content:prompt.prompt}] : [])];
-  return turns.map(turn => '<article class="message '+turn.role+'"><span class="folio">'+(turn.role === 'user' ? 'Tú' : 'NETIN')+'</span><p>'+escape(turn.content)+'</p></article>').join('');
+  return turns.map(turn => '<article class="message '+turn.role+'"><span class="folio">'+(turn.role === 'user' ? 'You' : 'NETIN')+'</span><p>'+escape(turn.content)+'</p></article>').join('');
 }
 
 function intakeComposer(prompt) {
-  if (!prompt) return '<div class="actions">'+button('Guardar chequeo','finish-chat-check','primary',busy ? 'disabled' : '')+'</div>';
+  if (!prompt) return '<div class="actions">'+button('Save check-in','finish-chat-check','primary',busy ? 'disabled' : '')+'</div>';
   const disabled = busy ? ' disabled' : '';
   const existing = (draft().values[prompt.key] != null ? E.format(draft().values[prompt.key]) : '');
   const answer = prompt.options ? '<div class="actions intake-options">'+Object.entries(prompt.options).map(([key,label]) =>
     button(label,'intake-option','','data-answer="'+key+'"'+disabled)).join('')+'</div>' :
-    field(prompt.metric ? metricNames[prompt.metric.key]+' ('+prompt.metric.unit+')' : 'Tu respuesta',prompt.metric ? '<input name="answer" autocomplete="off" maxlength="60" value="'+escape(existing)+'"'+disabled+'>' :
+    field(prompt.metric ? metricNames[prompt.metric.key]+' ('+prompt.metric.unit+')' : 'Your answer',prompt.metric ? '<input name="answer" autocomplete="off" maxlength="60" value="'+escape(existing)+'"'+disabled+'>' :
       '<textarea name="answer" rows="2" maxlength="'+(prompt.key === 'note' ? 1500 : 700)+'"'+disabled+'>'+escape(existing)+'</textarea>');
   return '<form id="intake-form" class="intake-form">'+answer+(prompt.key === 'note' ?
-    field('Foto (opcional)','<input name="image" type="file" accept="image/jpeg,image/png,image/webp"'+disabled+'>')+preview(draft().image) : '')+
-    '<div class="actions">'+(prompt.options ? '' : '<button class="button primary"'+disabled+'>Enviar</button>')+
-    (prompt.key === 'symptoms' ? button('Sin novedades','intake-option','','data-answer="none"'+disabled) : '')+
-    (prompt.optional ? button('Omitir','skip-intake','',disabled) : '')+'</div><p class="error" role="alert"></p></form>';
+    field('Photo (optional)','<input name="image" type="file" accept="image/jpeg,image/png,image/webp"'+disabled+'>')+preview(draft().image) : '')+
+    '<div class="actions">'+(prompt.options ? '' : '<button class="button primary"'+disabled+'>Send</button>')+
+    (prompt.key === 'symptoms' ? button('Nothing to report','intake-option','','data-answer="none"'+disabled) : '')+
+    (prompt.optional ? button('Skip','skip-intake','',disabled) : '')+'</div><p class="error" role="alert"></p></form>';
 }
 
 function speakIntake() {
@@ -529,14 +582,15 @@ async function finishIntake() {
   const urgent = CI.urgent({...current,values:entry.values});
   const drafts = {...state.drafts};
   delete drafts[current.env];
-  let reply = intakeSummary(entry,urgent);
+  const urgentReport = urgent && current.turns.findLast(turn => turn.role === 'user' && CI.unresponsiveReport(turn.content));
+  let reply = urgentReport ? emergencyAnswer(urgentReport.content) : intakeSummary(entry,urgent);
   const hasData = !!urgent || Object.keys(current.values).length > 0 ||
     Object.entries(current.answers).some(([key,value]) => key !== 'urgent' && value !== '') || current.image !== today()?.image && !!current.image;
   entry.summary = reply;
   if (!save({...state,drafts,records:hasData ? [...state.records.filter(item => item.env !== entry.env || item.date !== entry.date),entry] : state.records})) {
     if (urgent && view() === 'bot') {
-      notify(reply.sections.immediateActions);
-      if (readAloud) speakReply({role:'assistant',content:reply.text,sections:reply.sections});
+      notify(reply.paragraph || reply.sections.immediateActions);
+      if (readAloud) speakReply({role:'assistant',content:reply.text,...reply});
     }
     return;
   }
@@ -549,17 +603,13 @@ async function finishIntake() {
     busy = true;
     if (view() === 'bot') render();
     try {
-      if (missionIndexing) await missionIndexing;
-      if (session !== activeSession) return;
-      const search = concern || reviewSearch(context);
-      const found = library.length && search ? await AI.answer('En español, resume mi chequeo. Qué medir, qué observar y qué riesgos justifican avisar al médico. Sé breve y usa las fuentes.',[],library,context,search,false) : null;
-      if (found?.sections) reply = found;
-      else if (!concern && !measurements.flags.length) reply = {text:await AI.reflect('Resume el chequeo en una o dos frases y menciona una medición que falte, si hay alguna. Usa solo los datos registrados.',context)};
+      const recentResponses = current.turns.filter(turn => turn.role === 'user').map(turn => turn.content.slice(0,240));
+      reply = await AI.checkInSummary({...context,recentResponses},checkFollowUps(entry));
     } catch { /* Keep the local summary when documents or Qwen are unavailable. */ }
     finally { if (session === activeSession) busy = false; }
   }
   if (session !== activeSession) return;
-  const turn = {role:'assistant',mode:'check',content:hasData ? reply.text : 'Chequeo omitido.',sections:hasData ? reply.sections : undefined,sources:reply.sources,measurements};
+  const turn = {...(hasData ? reply : {}),role:'assistant',mode:'check',content:hasData ? reply.text : 'Check-in skipped.',measurements};
   const conversation = datedTurns([...transcript,turn]);
   if (!save({...state,dailyFlow:{...flow(),date:E.dateKey(),check:hasData ? 'done' : 'skipped'},
     records:state.records.map(item => item === entry ? {...item,summary:reply} : item),
@@ -611,8 +661,8 @@ function checkView() {
         current.values.impact === 'urgent' ? '<p class="notice urgent">'+E.medicalHelp+'</p>' : '')+'<form id="check-form">'+field(metric ? metric.label+' ('+metric.unit+')' : step.title,input)+
       (step.key === 'note' ? field('How did your emotional state affect your work today?','<select name="moodImpact"><option value="">Select an option</option>'+
         Object.entries(E.dutyImpact).map(([id,label]) => '<option value="'+id+'"'+(id === current.values.moodImpact ? ' selected' : '')+'>'+label+'</option>').join('')+'</select>')+
-        field('Foto (opcional)','<input name="image" type="file" accept="image/jpeg,image/png,image/webp">')+preview(current.image)+(current.image ? button('Remove photo','remove-image') : '') : '')+
-      '<p class="error" role="alert"></p><div class="actions"><button class="button primary" type="submit" value="next">'+(step.key === 'note' ? 'Guardar chequeo' : 'Next')+'</button>'+
+        field('Photo (optional)','<input name="image" type="file" accept="image/jpeg,image/png,image/webp">')+preview(current.image)+(current.image ? button('Remove photo','remove-image') : '') : '')+
+      '<p class="error" role="alert"></p><div class="actions"><button class="button primary" type="submit" value="next">'+(step.key === 'note' ? 'Save check-in' : 'Next')+'</button>'+
       (step.key === 'note' ? '' : '<button class="button" type="submit" value="skip">Skip</button>')+(current.index ? button('Back','back') : '')+'</div></form>';
   } else if (entry) {
     body = '<h2>Today’s check-in</h2>'+assessment(entry)+E.metrics.map(metric => reading(metric,entry.values[metric.key])).join('')+details(entry)+
@@ -633,17 +683,32 @@ function checkView() {
 
 function replySections(turn) {
   const citations = turn.sources?.length ? '<dd class="citations">'+turn.sources.map((source,index) =>
-    '<details><summary>Fuente '+(source.ref || index+1)+' · '+escape(source.title)+'</summary>'+
+    '<details><summary>Source'+(source.ref || index+1)+' · '+escape(source.title)+'</summary>'+
     (source.text ? '<p>'+escape(source.text)+'</p>' : '')+
-    (source.url && /^https:\/\//i.test(source.url) ? '<p><a href="'+escape(source.url)+'" target="_blank" rel="noopener noreferrer">Abrir fuente original</a></p>' : '')+'</details>'
+    (source.url && /^https:\/\//i.test(source.url) ? '<p><a href="'+escape(source.url)+'" target="_blank" rel="noopener noreferrer">Open original source</a></p>' : '')+'</details>'
   ).join('')+'</dd>' : '';
   const fields = AI.titles(turn.sections);
   const visible = fields.filter(([key]) => !['measurements','indicators','risks'].includes(key));
   const details = fields.filter(([key]) => ['measurements','indicators','risks'].includes(key));
   return '<dl class="reply-sections">'+visible.map(([key,title]) =>
     '<dt>'+title+'</dt><dd>'+escape(turn.sections[key])+'</dd>'+(key === 'evidence' ? citations : '')
-  ).join('')+'</dl>'+(details.length ? '<details class="medical-details"><summary>Mediciones, indicadores y riesgos</summary><dl class="reply-sections">'+
+  ).join('')+'</dl>'+(details.length ? '<details class="medical-details"><summary>Measurements, indicators and risks</summary><dl class="reply-sections">'+
     details.map(([key,title]) => '<dt>'+title+'</dt><dd>'+escape(turn.sections[key])+'</dd>').join('')+'</dl></details>' : '');
+}
+
+function summaryParagraph(value) {
+  if (value?.paragraph) return value.paragraph;
+  const fields = ['immediateActions','evidence','recommendations','whyItMatters'];
+  return value?.sections ? [...new Set(fields.map(key => value.sections[key]).filter(Boolean))].join(' ') : value?.text || value?.content || '';
+}
+
+function paragraphReply(value) {
+  const sources = value.sources || [];
+  return '<p'+(value.urgent ? ' class="notice critical" role="alert"' : '')+'>'+escape(summaryParagraph(value))+'</p>'+
+    (sources.length ? '<details class="citations"><summary>Sources</summary>'+sources.map(source =>
+      '<p>'+(/^https:\/\//i.test(source.url || '') ? '<a href="'+escape(source.url)+'" target="_blank" rel="noopener noreferrer">'+escape(source.title)+'</a>' : escape(source.title))+'</p>'
+    ).join('')+'</details>' : '')+
+    (value.handoff ? '<p class="micro">Report to responders: “'+escape(value.handoff)+'”</p>' : '');
 }
 
 function motorHistory() {
@@ -682,7 +747,7 @@ function motorView() {
   const grid = motorGame === 'taps' ? '<span class="motor-pad">Left</span><span class="motor-pad">Right</span>' :
     Array.from({length:15},() => '<span class="'+(motorGame === 'dock' ? 'motor-beacon' : 'motor-bay')+'" aria-hidden="true"></span>').join('');
   return pageHead(environment().name,'Motor skills','Practice reaction, hand–eye coordination and finger control.')+
-    workflow()+'<div class="actions flow-actions">'+button(flow().motor ? 'Continuar a bitácora' : 'Omitir prueba por hoy','next-journal',flow().motor ? 'primary' : '',motorRound ? 'disabled' : '')+'</div>'+
+    workflow()+'<div class="actions flow-actions">'+button(flow().motor ? 'Continue to journal' : 'Skip today’s test','next-journal',flow().motor ? 'primary' : '',motorRound ? 'disabled' : '')+'</div>'+
     '<div class="actions motor-select" role="group" aria-label="Select a motor game">'+Object.entries(Motor.games).map(([key,item]) =>
       button(item.name,'motor-game',key === motorGame ? 'primary' : '',
         'data-game="'+key+'" aria-pressed="'+(key === motorGame)+'"'+(motorRound ? ' disabled' : ''))).join('')+'</div>'+
@@ -691,12 +756,12 @@ function motorView() {
       grid+'</div><div class="actions">'+button('End round','motor-cancel')+'</div>' :
       '<p id="motor-status" role="status">'+escape(motorMessage)+'</p>'+
       (result ? '<h3>'+(motorResult ? 'Round complete' : 'Today’s result')+'</h3>'+motorSummary(result) : '<p>'+game.description+'</p>')+
-      '<form id="motor-form"><fieldset class="motor-hands"><legend>¿Qué mano usarás?</legend>'+
+      '<form id="motor-form"><fieldset class="motor-hands"><legend>Which hand will you use?</legend>'+
       Object.entries(Motor.hands).map(([key,label]) => '<label><input type="radio" name="hand" value="'+key+'"'+
         ((result?.hand || motorHistory().at(-1)?.hand || 'right') === key ? ' checked' : '')+'> '+label+'</label>').join('')+'</fieldset>'+
-      '<button class="button primary" type="submit">'+(saved ? 'Practicar' : 'Iniciar prueba')+'</button></form>')+'</section>'+
-    '<aside class="side-sheet"><h2>Comparar resultados</h2><p class="muted">Usa la misma mano y el mismo dispositivo cada día. NETIN registra el primer resultado de cada juego.</p>'+
-    '<p class="muted">El resultado mide tu desempeño en el juego.'+
+      '<button class="button primary" type="submit">'+(saved ? 'Practice' : 'Start test')+'</button></form>')+'</section>'+
+    '<aside class="side-sheet"><h2>Compare your results</h2><p class="muted">Use the same hand and device each day. NETIN logs your first result for each test.</p>'+
+    '<p class="muted">The result measures your performance in the test.'+
     (simulation() ? ' Demo profile results are labeled as simulation.' : '')+'</p></aside></div>'+
     '<section class="work-sheet report-notes motor-log"><h2>Motor log · Last 30 days</h2>'+motorTable(E.weekly([],state.env,30))+'</section>';
 }
@@ -716,7 +781,7 @@ function startMotorRound(hand) {
       markFlow('motor');
       motorMessage = 'Practice complete. Your saved daily result is still in the log.';
     } else if (save({...state,motorLogs:[...motorHistory(),motorResult],dailyFlow:{...flow(),date:round.date,motor:'done'}})) {
-      motorMessage = 'Resultado diario guardado.';
+      motorMessage = 'Daily result saved.';
     } else {
       motorMessage = 'The result could not be saved.';
     }
@@ -777,8 +842,8 @@ function render() {
   }
   const workspace = route !== 'home' && route !== 'camera';
   $('sidebar').hidden = !workspace;
-  $('crew-controls').hidden = !session;
-  if (session) $('environment').textContent = stages[state.env];
+  $('mission-stage').innerHTML = stageOptions(stageChoice);
+  $('mission-stage').disabled = !!(cameraScreen || busy || summaryPending || motorRound);
   if (workspace) {
     const active = {motor:'health',journal:'panel',check:'bot',semana:'records'}[route] || route;
     const navigation = items => items.map(([key,label]) => '<a href="#'+key+'"'+(key === active ? ' aria-current="page"' : '')+'>'+label+'</a>').join('');
@@ -795,14 +860,14 @@ function render() {
 }
 function openModal(title, body) {
   const modal = $('modal');
-  modal.innerHTML = '<header class="section-head"><h2 id="modal-title">'+title+'</h2>'+button('Cerrar','close')+'</header>'+body;
+  modal.innerHTML = '<header class="section-head"><h2 id="modal-title">'+title+'</h2>'+button('Close','close')+'</header>'+body;
   modal.setAttribute('aria-labelledby','modal-title');
   modal.showModal();
 }
 function passwordFields(setup) {
   const autocomplete = setup ? 'new-password' : 'current-password';
-  return field('Contraseña','<input name="password" type="password" autocomplete="'+autocomplete+'" maxlength="128" '+(setup ? 'minlength="8" ' : '')+'required>')+
-    (setup ? field('Confirma la contraseña','<input name="confirmation" type="password" autocomplete="new-password" minlength="8" maxlength="128" required>') : '');
+  return field('Password','<input name="password" type="password" autocomplete="'+autocomplete+'" maxlength="128" '+(setup ? 'minlength="8" ' : '')+'required>')+
+    (setup ? field('Confirm password','<input name="confirmation" type="password" autocomplete="new-password" minlength="8" maxlength="128" required>') : '');
 }
 function medicalSuppliesModal(item) {
   const items = (state.medicalSupplies || []).filter(entry => entry.env === state.env);
@@ -822,10 +887,10 @@ function medicalSuppliesModal(item) {
 }
 function profileModal(create = false) {
   const profile = create ? {role:'Mission specialist'} : state.profile;
-  openModal(create ? 'Crear perfil' : 'Perfil del astronauta','<form id="profile-form">'+[['name','Nombre'],['role','Función'],['medical','Médico a bordo'],['history','Antecedentes'],['allergies','Alergias']].map(([key,label]) =>
+  openModal(create ? 'Create profile' : 'Crew profile','<form id="profile-form">'+[['name','Name'],['role','Role'],['medical','Crew medical officer'],['history','Health history'],['allergies','Allergies']].map(([key,label]) =>
     field(label,'<input name="'+key+'" maxlength="'+(key === 'name' || key === 'role' ? '80' : '350')+'" value="'+escape(profile[key])+'" '+(['name','role'].includes(key) ? 'required' : '')+'>')).join('')+
     (create ? passwordFields(true)+'<p class="error" role="alert"></p>' : '')+
-    '<button class="button primary" type="submit">'+(create ? 'Crear perfil' : 'Guardar perfil')+'</button></form>');
+    '<button class="button primary" type="submit">'+(create ? 'Create profile' : 'Save profile')+'</button></form>');
 }
 async function compressImage(file) {
   if (!['image/jpeg','image/png','image/webp'].includes(file.type) || file.size > 12*1024*1024) throw new Error('Choose a JPEG, PNG or WebP image up to 12 MB.');
@@ -908,19 +973,19 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
   if (!save({...state,conversations:[...(state.conversations || []),turn]})) return;
   chat = [...chat.slice(-79),turn];
   const nextEnv = mode === 'chat' ? E.detectEnvironmentChange(query) : null;
-  if (nextEnv) {
+  const urgent = CI.emergencyReport(query);
+  if (urgent || mode !== 'guide' && E.hasLowBodyTemperature(today())) {
+    const alert = urgent ? emergencyAnswer(query) : temperatureAlert(today());
+    chat.push({...alert,role:'assistant',content:alert.text,urgent:true});
+  } else if (nextEnv) {
     let text = E.environments[nextEnv].name+' is already the active environment.';
     if (nextEnv !== state.env) {
-      const change = {from:state.env,to:nextEnv,reportedAt:new Date().toISOString()};
-      text = save({...state,env:nextEnv,transitions:[...state.transitions,change]}) ?
-        'Environment updated to '+environment().name+'. Your next check-in will use this environment.' :
+      text = setStage(nextEnv) ?
+        'Mission stage updated to '+environment().name+' for all crew profiles.' :
         'The environment change could not be saved.';
       selectedDay = null;
     }
     chat.push({role:'assistant',content:text});
-  } else if (mode !== 'guide' && (CI.emergencyReport(query) || E.hasLowBodyTemperature(today()))) {
-    const alert = CI.emergencyReport(query) ? intakeSummary(null,'symptoms') : temperatureAlert(today());
-    chat.push({role:'assistant',content:alert.text,sections:alert.sections,sources:alert.sources});
   } else {
     const review = mode === 'daily' || mode === 'week';
     const data = crewContext(mode,query);
@@ -945,12 +1010,13 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
       turn.modelTurn = !!result?.sources?.length;
       turn.companion = !!social && !social.health;
       const reply = review && !turn.modelTurn ? localReview(mode, result?.text) : result;
-      chat.push({role:'assistant',mode,content:reply?.text || reply,sections:reply?.sections,sources:reply?.sources,modelTurn:turn.modelTurn,companion:turn.companion});
+      chat.push({role:'assistant',mode,content:reply?.text || reply,paragraph:reply?.paragraph,
+        sections:reply?.sections,sources:reply?.sources,modelTurn:turn.modelTurn,companion:turn.companion});
       if (turn.modelTurn || turn.companion) model = 'ready';
     } catch (error) {
       if (session === currentSession) {
         const reply = review ? localReview(mode,error.message) : mode === 'chat' && chatMode === 'companion' && !intent.health ?
-          'Qwen no está disponible ahora. Puedes seguir registrando tu chequeo.' : error.message;
+          'Qwen is unavailable. You can still record your check-in.' : error.message;
         chat.push({role:'assistant',content:reply?.text || reply,sections:reply?.sections});
       }
     } finally { if (session === currentSession) busy = false; }
@@ -964,6 +1030,22 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
     render();
     $('chat-form')?.elements.query.focus();
     if (readAloud) speakReply(chat.at(-1));
+  }
+  if (session === currentSession && urgent && CI.unresponsiveReport(query)) {
+    const immediate = chat.at(-1);
+    void AI.emergencyHandoff(query).then(handoff => {
+      if (!handoff || session !== currentSession || !immediate?.urgent) return;
+      const update = reply => reply === immediate ? {...reply,handoff} : reply;
+      if (!save({...state,conversations:(state.conversations || []).map(update)})) return;
+      chat = chat.map(update);
+      const last = $('chat-log')?.lastElementChild;
+      if (view() === 'bot' && !draft() && chat.at(-1)?.handoff === handoff && last?.classList.contains('assistant')) {
+        const note = document.createElement('p');
+        note.className = 'micro';
+        note.textContent = 'Report to responders: “'+handoff+'”';
+        last.append(note);
+      }
+    }).catch(() => {});
   }
 }
 
@@ -1000,13 +1082,14 @@ window.addEventListener('hashchange',() => {
   if (view() !== 'bot') stopSpeech();
   render();
   window.scrollTo({top:0,behavior:'instant'});
-  $('main').focus();
+  $('main').focus({preventScroll:true});
 });
 document.addEventListener('click',(event) => {
   const control = event.target.closest('[data-action]');
   if (!control) return;
   const {action} = control.dataset;
   if (action === 'enter-crew') return loginModal(control.dataset.id);
+  if (action === 'delete-crew') return deleteCrewModal(control.dataset.id);
   if (action === 'exit-crew') return exitCrew();
   if (action === 'new-profile') return profileModal(true);
   if (session && workspaceClick(control)) return;
@@ -1089,7 +1172,11 @@ document.addEventListener('click',(event) => {
   }
 });
 document.addEventListener('change',(event) => {
-  if (event.target.id === 'login-stage') stageChoice = event.target.value;
+  if (event.target.id === 'mission-stage') {
+    setStage(event.target.value);
+    render();
+    $('mission-stage').focus();
+  }
   if (event.target.id === 'markdown-files') void importSelectedMarkdown(Array.from(event.target.files));
   if (event.target.id === 'trend-metric' && Object.hasOwn(metricNames,event.target.value)) {
     trendMetric = event.target.value;
@@ -1117,6 +1204,7 @@ document.addEventListener('submit',async (event) => {
   }
   if (form.id === 'motor-form') return startMotorRound(form.elements.hand.value);
   if (form.id === 'login-form') return submitLogin(form);
+  if (form.id === 'delete-crew-form') return submitDeleteCrew(form);
   if (form.id === 'check-form') return submitCheck(event);
   if (form.id === 'intake-form') return submitIntake(form.elements.answer?.value || '',false,form.elements.image?.files[0]);
   if (form.id === 'chat-form') return sendMessage(form.elements.query.value.trim());
@@ -1156,7 +1244,7 @@ document.addEventListener('submit',async (event) => {
 globalThis.chrome?.webview?.addEventListener('message', ({data}) => {
   if (data?.channel !== 'netin-voice-unavailable' || data.id !== voiceRequest || !voiceText) return;
   const voices = globalThis.speechSynthesis?.getVoices().filter(voice => voice.localService) || [];
-  const voice = voices.find(voice => /^es(?:[-_]|$)/i.test(voice.lang)) || voices[0];
+  const voice = voices.find(voice => /^en(?:[-_]|$)/i.test(voice.lang)) || voices[0];
   const message = 'Windows could not play this reply. Check the installed voices and sound output.';
   if (!voice) return notify(message);
   const reply = new SpeechSynthesisUtterance(voiceText);
@@ -1170,24 +1258,29 @@ $('modal').addEventListener('close', event => {
 });
 async function start() {
   if (new URLSearchParams(location.search).get('reset-crew') === '1') {
-    $('main').textContent = 'Restableciendo los perfiles…';
+    $('main').textContent = 'Resetting profiles…';
     try {
       await resetCrewData();
       history.replaceState(null,'',location.pathname);
       rosterReset = true;
     } catch {
-      $('main').textContent = 'No se pudo completar el restablecimiento. Cierra NETIN y vuelve a ejecutar el actualizador.';
+      $('main').textContent = 'Could not reset the profiles. Close NETIN and run the updater again.';
       return;
     }
   }
   try {
+    const storedStage = localStorage.getItem(missionStageKey);
+    if (Object.hasOwn(stages,storedStage)) stageChoice = storedStage;
+    const removed = JSON.parse(localStorage.getItem(deletedCrewKey));
+    if (Array.isArray(removed)) deletedCrew = new Set(removed);
     if (localStorage.getItem(legacyCrew)) crewKeys.unshift(legacyCrew);
     const roster = JSON.parse(localStorage.getItem(rosterKey));
     readAloud = localStorage.getItem('netin-read-aloud') !== 'off';
     if (Array.isArray(roster)) crewKeys.splice(crewKeys.length - CrewProfiles.demoKeys.length,0,...new Set(roster.filter(isCrewKey)));
   } catch { storageError = true; }
+  crewKeys = crewKeys.filter(key => !deletedCrew.has(key));
   showRoute('home');
-  if (!rosterReset && !crewKeys.includes(legacyCrew)) {
+  if (!rosterReset && !deletedCrew.has(legacyCrew) && !crewKeys.includes(legacyCrew)) {
     CrewCamera.latest(legacyCrew).then(photo => {
       if (!photo) return;
       crewKeys.unshift(legacyCrew);

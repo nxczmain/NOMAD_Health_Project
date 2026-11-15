@@ -3,7 +3,8 @@ param(
     [string]$InstallRoot = 'E:\NETIN',
     [string]$MarkdownFolder = 'E:\Markdown - MarkItDown-20261114T212310Z-1-001\Markdown - MarkItDown',
     [string]$AppFolder,
-    [switch]$RestablecerAstronautas
+    [switch]$RestablecerAstronautas,
+    [switch]$SoloApp
 )
 
 $ErrorActionPreference = 'Stop'
@@ -54,6 +55,12 @@ if ($RestablecerAstronautas) {
     Install-AppFiles
     Write-Host 'Abriendo NETIN para restablecer los astronautas.'
     & (Join-Path $install.FullName 'Start-NETIN.ps1') -RestablecerAstronautas
+    return
+}
+
+if ($SoloApp) {
+    Install-AppFiles
+    Write-Host ("NETIN updated. Open {0}" -f (Join-Path $install.FullName 'Abrir-NETIN.cmd'))
     return
 }
 

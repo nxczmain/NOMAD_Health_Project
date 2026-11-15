@@ -1,0 +1,10 @@
+build/
+Profile/
+Ollama/
+**/obj/
+**/bin/
+*.nupkg
+*.user
+*.log
+.env
+!downloads/

@@ -1,35 +1,64 @@
 # NETIN
 
-NETIN is a Windows desktop prototype for the [NASA Space Apps astronaut health monitoring challenge](https://www.spaceappschallenge.org/2026/challenges/health-monitoring-software/). It runs locally using WebView2 and Qwen 3 4B through Ollama.
+NETIN is a Windows workstation for astronaut health check-ins during space missions. It combines daily observations, vital signs, a crew journal and motor skills into a local record. Qwen through Ollama helps astronauts review those records and consult imported mission documents.
 
-## Daily routine
+[Download NETIN for Windows](https://github.com/nxczmain/Nasa-Space-Apps/raw/refs/heads/main/downloads/NETIN-Windows-x64.zip) · [Complete setup for judges](docs/INSTALLATION.md) · [NASA Space Apps challenge](https://www.spaceappschallenge.org/2026/challenges/health-monitoring-software/)
 
-Choose an astronaut and a mission stage, enter the profile password, and complete the daily photo, conversational check-in, motor test, and journal. Home shows the daily summaries and vital signs. The assistant remembers the profile's saved conversations and retrieves relevant previous records. Health includes vital trends, a clickable front and back body map, journal summaries, and motor performance. Records groups the full history by date. Documents opens and searches the Markdown library.
+## Contents
 
-Two simulated astronauts have 30 days of sample records. Select Orbit for Maya Chen (`OrbitDemo26`) and Moon for Mateo Ruiz (`LunarDemo26`).
+1. [About the project](#about-the-project)
+2. [What you can evaluate](#what-you-can-evaluate)
+3. [Installation](#installation)
+4. [How it works](#how-it-works)
+5. [Repository layout](#repository-layout)
+6. [Research references](#research-references)
 
-## Build on Windows x64
+## About the project
 
-Install the Edge WebView2 Runtime and obtain the [Microsoft.Web.WebView2 NuGet package](https://www.nuget.org/packages/Microsoft.Web.WebView2/). Pass the downloaded `.nupkg` and an output folder to the build script. Windows also needs .NET Framework 4.8.
+Crew members log changes in how they feel, what they measured and how well they can work. NETIN helps them review that information and prepare a clearer handoff to the crew medical officer. The mission stage is shared across crew profiles on the same installation. Health records remain associated with each astronaut and the stage where they were recorded.
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\desktop\Build.ps1 -WebView2Package C:\path\Microsoft.Web.WebView2.nupkg -OutputDirectory .\build
+## What you can evaluate
+
+```mermaid
+flowchart TD
+    A["Select astronaut and mission stage"] --> B["Daily check-in and journal"]
+    A --> C["Motor skills"]
+    B --> D["Health and records"]
+    C --> D
+    E["Mission Markdown"] --> F["Assistant and crew handoff"]
+    D --> F
 ```
 
-With Ollama running locally, install the model with `ollama pull qwen3:4b` and open `build\NETIN.exe`. Use **Documents → Cargar carpeta Markdown** to replace the indexed library with your own folder. NETIN indexes Markdown from nested folders and retains the full text for reading. It retrieves relevant passages for medical answers without modifying the model weights.
+| Area | What to try |
+| --- | --- |
+| Home | Read the check-in recap, journal, relevant follow-ups and vital signs |
+| Assistant | Ask a question from the mission library, describe how you feel, or simulate an emergency handoff |
+| Health | Explore seven-day trends, the body map, journal patterns and motor tests |
+| Records | Browse two synthetic 30-day astronaut histories, including values, interviews and game results |
+| Documents | Load a local Markdown folder and inspect the references NETIN uses |
 
-## Portable Kingston update
+## Installation
 
-The `portable` folder contains the launcher and the updater for an existing NETIN portable installation. Close NETIN, then pass the installed USB folder, Markdown source, and compiled app.
+Download and extract the Windows x64 ZIP. Open Ollama and run `ollama pull qwen3:4b` before using the model. Start `NETIN.exe`, try Maya Chen or Mateo Ruiz, then import the included `ReferenceLibrary` folder from **Documents**. The [judges' guide](docs/INSTALLATION.md) includes prerequisites, demo passwords, sample questions, troubleshooting and build instructions.
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\portable\Actualizar-NETIN.ps1 -InstallRoot E:\NETIN -MarkdownFolder E:\Markdown -AppFolder .\build
-```
+## How it works
 
-The updater verifies the copied Markdown files using SHA-256 and stores them in `interface\knowledge`. It replaces the legacy document directory and preserves the existing WebView2 profile, photos, records and Ollama model. Run `Abrir-NETIN.cmd` from the USB. The portable launcher starts its own localhost Ollama server and stops it when NETIN closes.
+NETIN runs in a WinForms shell with WebView2. It matches questions to local Markdown passages and sends relevant text to Qwen on the same machine. Emergency reports first trigger a built-in action. For an unresponsive person, the model can then extract a directly reported observation for the medical handoff. See the [architecture notes](docs/ARCHITECTURE.md) for the data flow and technology stack.
 
-## Scope
+## Repository layout
 
-Health guidance is an aid for documenting and discussing concerns with the crew medical officer. The retrieved passages, measured values and the scope of the evidence are visible to the astronaut. Color highlights indicate review relative to the app's demonstration baseline. The body map colors represent reported intensity, and motor scores represent performance in the games. The prototype requires clinical validation and mission-approved procedures before operational use.
+| Directory | Contents |
+| --- | --- |
+| [app](app/) | Desktop host, interface, model integration and build script |
+| [docs](docs/) | Installation and evaluation guide, architecture notes |
+| [downloads](downloads/) | Windows x64 ZIP and its SHA-256 checksum |
+| [references](references/) | Public Markdown references for the demo |
+| [portable](portable/) | Launcher and update scripts for existing USB installations |
 
-Profile passwords control access through the app. Records remain in the local WebView2 profile. Protect the physical drive and Windows account when using personal health data.
+## Research references
+
+- NASA Human Research Program [human spaceflight hazards](https://www.nasa.gov/hrp/hazards/) and [risks from inadequate sleep and irregular schedules](https://www.nasa.gov/reference/risk-from-inadequate-sleep-and-irregular-schedules/).
+- NASA Office of the Chief Health and Medical Officer [in-flight medical care](https://www.nasa.gov/ochmo/health-and-medical-systems/in-flight-medical-care/).
+- American Red Cross [first aid for an unresponsive person](https://www.redcross.org/take-a-class/resources/learn-first-aid/unresponsive-and-breathing-person), a terrestrial reference.
+
+NETIN is a prototype for Space Apps. Operational use requires clinical validation and mission approval. The public download uses synthetic records and a small public demo library.

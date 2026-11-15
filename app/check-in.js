@@ -3,13 +3,13 @@
 (function (root) {
   const E = root.AstraEngine;
   const emergencySource = 'https://medlineplus.gov/ency/article/001927.htm';
-  const urgentPrompt = 'Antes de empezar, ¿tienes dificultad para respirar, dolor de pecho, confusión repentina, desmayo o sangrado que no se detiene?';
-  const yesNo = {yes:'Sí',no:'No',unsure:'No estoy seguro'};
+  const urgentPrompt = 'Before we begin, are you experiencing trouble breathing, chest pain, sudden confusion, fainting, or bleeding that will not stop?';
+  const yesNo = {yes:'Yes',no:'No',unsure:'Not sure'};
   const measures = ['temp','pulse','pressure','sleep','mood','glucose'];
   const symptomQuestions = {
-    nausea: '¿Has vomitado o te cuesta retener líquidos?',
-    dizziness: '¿Te pasa al moverte o cambiar de posición?',
-    headache: '¿Empezó de golpe o has notado cambios en la vista?',
+    nausea: 'Have you vomited or had trouble keeping fluids down?',
+    dizziness: 'Does it happen when you move or change position?',
+    headache: 'Did it start suddenly or have you noticed any changes in vision?',
     vision: 'What changed in your vision, and does it affect one eye or both?',
     exposure: 'What were you exposed to, and did the symptoms start before or after that exposure?',
     fatigue: 'Has the fatigue changed your ability to stay alert or complete your usual tasks?',
@@ -17,7 +17,7 @@
     digestion: 'Have you noticed any change in bowel movements or your ability to drink fluids?',
     sleep: 'What changed in your sleep schedule or sleeping environment?',
     mood: 'What part of the shift felt hardest for you emotionally?',
-    general: '¿Has notado algo que lo mejore o lo empeore?'
+    general: 'Have you noticed anything that makes it better or worse?'
   };
   const followUpQuestions = {
     nausea: 'Did it start after movement, eating, or a change in your work environment?',
@@ -47,7 +47,8 @@
     const denial = /^(?:none(?: at all)?|no(?: new symptoms| symptoms| issues| problems| concerns)?|nothing(?: to report| new)?|all good|i (?:feel|m|am) (?:fine|well|good)|ningun[oa]|no(?: tengo(?: sintomas| molestias))?|nada(?: que reportar)?|sin (?:sintomas|molestias|novedades)|me siento bien|todo bien)(?:\s+|$)/;
     const routine = /^(?:just\s+)?(?:(?:the|a|my)\s+)?(?:(?:normal|routine|regular|daily)\s+)?check\s?in$|^(?:(?:solo|nomas)\s+)?(?:(?:el|un|la|una)\s+)?(?:(?:chequeo|registro|revision)(?:\s+(?:diari[oa]|habitual|normal|de rutina))?|(?:check\s?in)(?:\s+(?:normal|diario|de rutina))?)$/;
     const remainder = normalized.replace(denial,'');
-    return (denial.test(normalized) && !remainder) || routine.test(remainder);
+    const improvement = /^(?:i(?: m)? (?:feel(?:ing)?|am) (?:much |a lot )?better|me siento (?:mucho |bastante )?mejor)(?: (?:now|today|i slept well|i slept better|ya dormi bien|dormi bien|ya))*(?: thanks| gracias)?$/;
+    return (denial.test(normalized) && !remainder) || routine.test(remainder) || improvement.test(normalized);
   }
 
   function restore(current) {
@@ -96,18 +97,18 @@
     if (!Object.hasOwn(answers,'symptoms')) {
       const name = personal.name ? ', '+personal.name : '';
       const lastSleep = personal.recent?.sleep;
-      const context = personal.recentConcern ? ' Ayer mencionaste «'+personal.recentConcern+'».' :
-        lastSleep != null && E.status(E.metricByKey('sleep'),lastSleep) === 'review' ? ' En tu último registro dormiste '+lastSleep+' h.' : '';
-      return [{key:'symptoms',prompt:'Hola'+name+'.'+context+' ¿Cómo te sientes hoy, física y emocionalmente?'}];
+      const context = personal.recentConcern ? ' Yesterday you mentioned «'+personal.recentConcern+'».' :
+        lastSleep != null && E.status(E.metricByKey('sleep'),lastSleep) === 'review' ? ' At your last check-in, you reported sleeping '+lastSleep+' h.' : '';
+      return [{key:'symptoms',prompt:'Hello'+name+'.'+context+' How are you feeling today, physically and emotionally?'}];
     }
     const followups = [];
     if (answers.symptoms) {
       const topic = current.topic || symptomTopic(current);
       if (!Object.hasOwn(answers,'onset') && !/\b(today|yesterday|since|this morning|last night|hours? ago|desde|ayer|hoy|anoche)\b/i.test(answers.symptoms)) {
-        followups.push({key:'onset',prompt:(topic === 'mood' ? 'Gracias por contármelo. ¿Desde cuándo te sientes así?' :
-          '¿Cuándo lo notaste por primera vez?'),optional:true});
+        followups.push({key:'onset',prompt:(topic === 'mood' ? 'Thanks for sharing. When did you start feeling this way?' :
+          'When did you first notice it?'),optional:true});
       }
-      if (!Object.hasOwn(answers,'impact') && !['mood','sleep'].includes(topic)) followups.push({key:'impact',prompt:'¿Te dificulta hacer alguna de tus tareas?',options:{mild:'Puedo hacer mis tareas',task:'Afecta mis tareas',urgent:'Necesito ayuda ahora'}});
+      if (!Object.hasOwn(answers,'impact') && !['mood','sleep'].includes(topic)) followups.push({key:'impact',prompt:'Does it make any of your duties harder?',options:{mild:'I can do my duties',task:'It affects my duties',urgent:'I need help now'}});
       if (!Object.hasOwn(answers,'symptomDetail')) followups.push({key:'symptomDetail',prompt:symptomQuestions[topic],optional:true});
       if (answers.symptomDetail && followUpQuestions[topic] && !Object.hasOwn(answers,'symptomContext')) followups.push({
         key:'symptomContext',prompt:topic === 'mood' ? 'What would feel most helpful right now: talking it through, taking a quiet moment, or checking in with someone on your crew?' :
@@ -125,12 +126,12 @@
     }
     if (readings.length) return readings;
     if (!Object.hasOwn(answers,'moodImpact') && (values.mood == null || values.mood <= 6 || symptomTopic(current) === 'mood')) {
-      return [{key:'moodImpact',prompt:'¿Cuánto afectó tu ánimo a tu concentración o a tus tareas?',options:E.dutyImpact,optional:true}];
+      return [{key:'moodImpact',prompt:'How much did your mood affect your focus or duties?',options:E.dutyImpact,optional:true}];
     }
     if (!Object.hasOwn(answers,'context') && (personal.changedEnvironment || symptomTopic(current) === 'exposure')) {
       return [{key:'context',prompt:E.environments[current.env].question,optional:true}];
     }
-    if (!Object.hasOwn(answers,'note')) return [{key:'note',prompt:'¿Quieres añadir algo más antes de guardar? También puedes adjuntar una foto.',optional:true}];
+    if (!Object.hasOwn(answers,'note')) return [{key:'note',prompt:'Anything else you want to add before saving? You can attach a photo.',optional:true}];
     return [];
   }
 
@@ -140,7 +141,17 @@
     return next ? {...next,prompt:current.next.prompt} : available[0];
   }
 
+  function unresponsiveReport(text) {
+    const folded = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[’']/g,'');
+    if (/\b(?:responding to (?:my |the )?(?:texts?|messages?|emails?)|no responde (?:a mis mensajes|al correo))\b/.test(folded) &&
+        !/\b(?:breath\w*|respira\w*|unconscious|inconsciente)\b/.test(folded)) return false;
+    if (/\b(?:unresponsive|unconscious|inconsciente)\b/.test(folded) && !/\b(?:not |no esta |never )(?:unresponsive|unconscious|inconsciente)\b/.test(folded)) return true;
+    return /\b(?:crew ?mate|partner|companion|colleague|companer[oa]|tripulante|he|she|person|persona)\b/.test(folded) &&
+      /\b(?:is not responding|isnt responding|wont respond|no response|cannot wake|cant wake|wont wake|no (?:responde|reacciona|despierta))\b/.test(folded);
+  }
+
   function emergencyReport(text) {
+    if (unresponsiveReport(text)) return true;
     return /\b(?:i (?:can(?:not|['’]t) breathe|(?:am having|have) (?:chest pain|trouble breathing)|just (?:fainted|passed out)|(?:want|plan) to (?:kill myself|end my life))|no puedo respirar|(?<!\bno\s)(?:tengo (?:dolor (?:en el|de) pecho|dificultad para respirar)|me (?:duele el pecho|acabo de desmayar)|(?:quiero|voy a) (?:suicidarme|quitarme la vida)))\b/i.test(text);
   }
 
@@ -165,12 +176,12 @@
 
   function apply(current, prompt, input, skip) {
     const raw = input.trim();
-    if (!skip && !raw && prompt.key !== 'note') throw new Error('Escribe una respuesta o selecciona una opción.');
-    if (skip && !prompt.optional) throw new Error('Responde esta pregunta para continuar.');
+    if (!skip && !raw && prompt.key !== 'note') throw new Error('Enter an answer or choose an option.');
+    if (skip && !prompt.optional) throw new Error('Answer this question to continue.');
     let value = skip ? '' : raw;
     if (prompt.options && value) {
       const match = Object.keys(prompt.options).find(key => key === value.toLowerCase() || prompt.options[key].toLowerCase() === value.toLowerCase());
-      if (!match) throw new Error('Elige una de las respuestas.');
+      if (!match) throw new Error('Choose one of the answers.');
       value = match;
     }
     if (prompt.metric && value) {
@@ -192,7 +203,7 @@
     // Explicit current emergency statements also interrupt free-text follow-ups.
     if (!prompt.metric && !prompt.options && emergencyReport(raw)) values.impact = 'urgent';
     const readings = prompt.key === 'symptoms' ? embeddedReadings(raw) : {};
-    const displayed = skip ? 'Omitido' : prompt.options?.[value] || (prompt.metric ? E.format(value)+' '+prompt.metric.unit : raw || 'Sin nota adicional');
+    const displayed = skip ? 'Skipped' : prompt.options?.[value] || (prompt.metric ? E.format(value)+' '+prompt.metric.unit : raw || 'No additional note');
     return {...current,next:undefined,values:{...values,...readings},answers:{...current.answers,...readings,[prompt.key]:value},
       turns:[...current.turns,{role:'assistant',content:prompt.prompt},{role:'user',content:displayed}]};
   }
@@ -218,5 +229,6 @@
     return entry;
   }
 
-  root.NetinCheckIn = {create,question,questions,restore,apply,urgent,toEntry,differingReadings,symptomTopic,symptomQuestions,emergencyReport,emergencySource};
+  root.NetinCheckIn = {create,question,questions,restore,apply,urgent,toEntry,differingReadings,symptomTopic,symptomQuestions,
+    routineResponse,unresponsiveReport,emergencyReport,emergencySource};
 })(globalThis);

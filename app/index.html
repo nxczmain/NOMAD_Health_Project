@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -16,18 +16,16 @@
   <script defer src="app.js"></script>
 </head>
 <body>
-  <a class="skip" href="#main">Ir al contenido</a>
+  <a class="skip" href="#main">Skip to content</a>
   <aside class="sidebar" id="sidebar" hidden>
     <div class="sidebar-crew" id="sidebar-crew"></div>
-    <nav id="nav" aria-label="Secciones"></nav>
-    <nav id="utilities" aria-label="Documentos y ajustes"></nav>
+    <nav id="nav" aria-label="Workspace"></nav>
+    <nav id="utilities" aria-label="Documents and settings"></nav>
   </aside>
   <div class="layout">
     <header class="mast">
+      <label class="stage-switch" for="mission-stage">Mission stage <select id="mission-stage"></select></label>
       <strong class="brand">NETIN</strong>
-      <div id="crew-controls" hidden>
-        <button type="button" class="stage-switch" data-action="stage-menu">Etapa <span id="environment"></span></button>
-      </div>
     </header>
     <main id="main" tabindex="-1"></main>
   </div>

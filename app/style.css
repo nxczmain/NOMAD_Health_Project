@@ -37,10 +37,10 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}
 .sidebar a{text-decoration:none;color:#d5e2f5;padding:11px 14px;border-radius:8px;font-weight:610}
 .sidebar a:hover,.sidebar a[aria-current]{color:white;background:#2d4364}
 .sidebar a[aria-current]{box-shadow:inset 3px 0 #91b0ff}
-.mast{height:78px;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:1px;padding:0 clamp(20px,5vw,58px);border-bottom:1px solid var(--line);background:var(--white)}
+.mast{height:78px;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 clamp(20px,5vw,58px);border-bottom:1px solid var(--line);background:var(--white)}
 .brand{font-size:1.45rem;line-height:1.2;font-weight:800;letter-spacing:.13em}
-.stage-switch{border:0;background:none;padding:2px 0;color:var(--muted);font-size:.86rem}
-.stage-switch span{font-weight:720;color:var(--blue);margin-left:5px}
+.stage-switch{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:.86rem}
+.stage-switch select{font:inherit;font-weight:700;color:var(--blue);background:var(--white);border:1px solid var(--line);border-radius:8px;padding:7px 9px}
 main{max-width:1540px;margin:auto;padding:34px clamp(20px,5vw,58px) 54px}
 .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:0 0 24px}
 .page-head .muted{margin-top:7px}
@@ -95,6 +95,8 @@ main>.workflow{margin-bottom:18px}
 .crew-option{display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:12px;align-items:center;text-align:left;padding:10px;border:1px solid var(--line);border-radius:10px;background:white;color:var(--ink)}
 .crew-option:hover{border-color:#7d9beb;background:#f4f7ff}
 .crew-option small{display:block;color:var(--muted)}
+.crew-row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px}
+.crew-delete{color:#9a241e}
 .assistant-shell,.journal-card,.photo-capture{max-width:960px}
 .assistant-toolbar{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:12px}
 .transcript{display:flex;flex-direction:column;gap:12px;min-height:215px;max-height:52vh;overflow:auto;padding:16px 3px}

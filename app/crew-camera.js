@@ -36,13 +36,15 @@ const CrewCamera = (() => {
     });
   }
 
-  async function clearPhotos() {
+  async function clearPhotos(crew) {
     const db = await open();
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(storeName, 'readwrite');
       transaction.oncomplete = resolve;
       transaction.onabort = () => reject(transaction.error);
-      transaction.objectStore(storeName).clear();
+      const store = transaction.objectStore(storeName);
+      if (crew) store.delete(IDBKeyRange.bound([crew,''],[crew,'\uffff']));
+      else store.clear();
     });
   }
 

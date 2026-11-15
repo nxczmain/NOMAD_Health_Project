@@ -2,19 +2,19 @@
 
 (function (root) {
   const environments = {
-    earth: { name: 'Earth', mission: 'Ground', location: 'Ground or training facility', context: 'Earth gravity', question: '¿Cambió tu actividad o tu entorno en Tierra durante el turno?' },
+    earth: { name: 'Earth', mission: 'Ground', location: 'Ground or training facility', context: 'Earth gravity', question: 'Did your activity or surroundings change during your shift on Earth?' },
     orbit: { name: 'Earth orbit', mission: 'Horizon', location: 'Orbital station', context: 'Microgravity', question: 'Did you notice dizziness, disorientation, or changes in vision during your shift?' },
     transit: { name: 'Deep space', mission: 'Odyssey', location: 'Transit vehicle', context: 'Interplanetary transit', question: 'Did your sleep schedule, concentration, or sense of isolation change during transit?' },
     moon: { name: 'Lunar surface', mission: 'Selene', location: 'Lunar habitat', context: 'Partial gravity', question: 'After working on the surface, did you notice changes in balance, irritation, or dust exposure?' },
     mars: { name: 'Martian surface', mission: 'Ares', location: 'Martian habitat', context: 'Partial gravity', question: 'After your surface duties, did you notice fatigue, changes in mobility, or difficulty communicating with the crew?' }
   };
   const metrics = [
-    { key: 'pulse', label: 'Heart rate', short: 'Pulse', unit: 'bpm', base: 70, deviation: 12, min: 1, max: 300, step: 1, prompt: '¿Cuánto marcó tu pulso en reposo, en bpm?' },
-    { key: 'pressure', label: 'Blood pressure', short: 'Pressure', unit: 'mmHg', base: [117, 75], deviation: [15, 10], prompt: '¿Cuáles fueron los dos números de tu presión en mmHg? Por ejemplo, 118/76.' },
-    { key: 'temp', label: 'Temperature', short: 'Temp.', unit: '°C', base: 36.6, deviation: 0.6, min: 25, max: 50, step: 0.1, prompt: '¿Qué temperatura marcó el termómetro en °C? Usa el mismo método al comparar registros.' },
-    { key: 'glucose', label: 'Blood glucose', short: 'Glucose', unit: 'mg/dL', base: 94, deviation: 18, min: 1, max: 1000, step: 1, prompt: 'Si mediste tu glucosa, ¿qué valor obtuviste en mg/dL?' },
-    { key: 'sleep', label: 'Sleep duration', short: 'Sleep', unit: 'h', base: 7.5, deviation: 1, min: 0, max: 24, step: 0.1, prompt: '¿Cuántas horas dormiste en las últimas 24 horas?' },
-    { key: 'mood', label: 'Mood', short: 'Mood', unit: '/ 10', base: 8, deviation: 2, min: 1, max: 10, step: 1, prompt: '¿Cómo estuvo tu ánimo del 1 al 10?' }
+    { key: 'pulse', label: 'Heart rate', short: 'Pulse', unit: 'bpm', base: 70, deviation: 12, min: 1, max: 300, step: 1, prompt: 'What was your resting pulse in bpm?' },
+    { key: 'pressure', label: 'Blood pressure', short: 'Pressure', unit: 'mmHg', base: [117, 75], deviation: [15, 10], prompt: 'What were your blood pressure readings in mmHg, for example 118/76?' },
+    { key: 'temp', label: 'Temperature', short: 'Temp.', unit: '°C', base: 36.6, deviation: 0.6, min: 25, max: 50, step: 0.1, prompt: 'What was your temperature in °C? Use the same method when comparing readings.' },
+    { key: 'glucose', label: 'Blood glucose', short: 'Glucose', unit: 'mg/dL', base: 94, deviation: 18, min: 1, max: 1000, step: 1, prompt: 'If you checked your blood glucose, what was the result in mg/dL?' },
+    { key: 'sleep', label: 'Sleep duration', short: 'Sleep', unit: 'h', base: 7.5, deviation: 1, min: 0, max: 24, step: 0.1, prompt: 'How many hours did you sleep in the last 24 hours?' },
+    { key: 'mood', label: 'Mood', short: 'Mood', unit: '/ 10', base: 8, deviation: 2, min: 1, max: 10, step: 1, prompt: 'How was your mood from 1 to 10?' }
   ];
   const steps = [
     { key: 'impact', title: 'Physical condition', prompt: 'How do you feel physically, and does it affect your duties?',

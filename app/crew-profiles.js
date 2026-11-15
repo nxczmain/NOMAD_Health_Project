@@ -42,22 +42,22 @@ const CrewProfiles = (() => {
     const {profile,env,auth} = demos[key];
     const lunar = env === 'moon';
     const notes = lunar ? [
-      'Revisé los equipos del hábitat y terminé el turno con buen ánimo.',
-      'Practiqué con los guantes del traje. Hacer las tareas despacio me ayudó a concentrarme.',
-      'Hablé con mi familia después de cenar. Me ayudó a desconectarme del trabajo.',
-      'Organicé las herramientas con mi compañero y descansé antes del siguiente turno.',
-      'Hoy me sentí tranquilo. El entrenamiento de coordinación salió mejor que ayer.'
+      'I checked the habitat equipment and finished the shift in good spirits.',
+      'I practiced with my suit gloves. Slowing down helped me focus on the tasks.',
+      'I spoke with my family after dinner. It helped me switch off from work.',
+      'I organized the tools with my crewmate and rested before the next shift.',
+      'I felt calm today. The coordination drill went better than yesterday.'
     ] : [
-      'Revisé los experimentos y descansé bien antes del turno.',
-      'Hice ejercicio con mi compañera. El rato en equipo me levantó el ánimo.',
-      'Terminé el mantenimiento y escribí a mi familia durante el descanso.',
-      'Me tomé un descanso entre tareas y pude concentrarme mejor.',
-      'Hoy mantuve mi horario de sueño y me sentí con energía durante el turno.'
+      'I checked the experiments and was well rested before the shift.',
+      'I exercised with my crewmate. Spending time together lifted my mood.',
+      'I finished maintenance and wrote to my family during the break.',
+      'I took a break between tasks and was able to focus better.',
+      'I kept my sleep schedule and felt energized during the shift.'
     ];
     const records = AstraEngine.weekly([],env,30).map(({date},index) => {
       const event = index === 12 || index >= 26 && index <= 28;
-      const concern = event ? (lunar ? 'Sentí náusea leve e inestabilidad después del entrenamiento en superficie.' :
-        'Dormí a ratos y me costó concentrarme durante el mantenimiento.') : '';
+      const concern = event ? (lunar ? 'I felt mild nausea and unsteadiness after surface training.' :
+        'My sleep was interrupted, and I had trouble focusing during maintenance.') : '';
       const values = {
         pulse: (lunar ? 67 : 69) + index * 5 % 9 + (event ? 8 : 0),
         pressure: [(lunar ? 114 : 116) + index * 3 % 9, (lunar ? 71 : 73) + index * 5 % 8],
