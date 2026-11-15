@@ -161,3 +161,4 @@ The research collection covers in-flight medical conditions, mission risks, firs
 - Luiz Ruiz
 
 [Team profile on NASA Space Apps](https://www.spaceappschallenge.org/2026/find-a-team/printnombre_del_equipo/)
+Project Presentation (https://www.canva.com/design/DAHa7y80PRY/D-VR3uL69IYG2SafyVAtRw/edit)
