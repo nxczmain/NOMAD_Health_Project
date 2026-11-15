@@ -340,11 +340,14 @@ globalThis.AstraAssistant = (() => {
   function chatIntent(message, history) {
     const latest = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[’']/g,'');
     const reports = [message,...history.filter(turn => turn.role === 'user').slice(-3).reverse().map(turn => turn.content)];
-    const concern = reports.map(text => /\b(?:my head hurts|head (?:is )?(?:hurting|hurts)|dolor de cabeza|me duele la cabeza)\b/i.test(text) ?
-      'headache' : NetinCheckIn.symptomTopic({answers:{symptoms:text}})).find(topic => topic !== 'general');
-    const clearHealthRequest = /\b(?:medication|medicamento|dosage|dosis|diagnos\w*|treat(?:ment)?|tratamiento|medical risk|riesgo medico|blood pressure|presion arterial|decompression|descompresion|hypoxia|hipoxia|sprain|esguince|allergic reaction|reaccion alergica|infection|infeccion|co2|radiation exposure|exposicion a radiacion)\b/.test(latest);
+    const topics = reports.map(text => /\b(?:my head hurts|head (?:is )?(?:hurting|hurts)|dolor de cabeza|me duele la cabeza)\b/i.test(text) ?
+      'headache' : NetinCheckIn.symptomTopic({answers:{symptoms:text}}));
+    const concern = topics.find(topic => topic !== 'general');
+    const clearHealthRequest = /\b(?:medication|medicamento|dosage|dosis|diagnos\w*|treat(?:ment)?|tratamiento|medical risk|riesgo medico|blood pressure|presion arterial|decompression|descompresion|hypoxia|hipoxia|sprain|esguince|allergic reaction|reaccion alergica|infection|infeccion|co2|radiation exposure|exposicion a radiacion|spaceflight hazards|mission health risks)\b/.test(latest);
     const advice = /\b(?:what (?:can|should|do) i|how (?:can|should|do) i|(?:fe[el]+|fell) better|help me feel better|que (?:puedo|debo|hago|me recomiendas)|como (?:puedo|me curo)|para sentirme mejor)\b/.test(latest);
-    return {health:clearHealthRequest || (advice && !!concern && concern !== 'mood'),search:concern || ''};
+    const asksAboutEffects = /\b(?:how (?:can|could|does|do|might|will)|why (?:does|do|can|is)|what (?:causes|affects|are the effects|is the effect)|como (?:puede|afecta|influy[ea])|por que (?:causa|afecta))\b/.test(latest);
+    return {health:clearHealthRequest || (advice && !!concern && concern !== 'mood') ||
+      (asksAboutEffects && !['general','mood'].includes(topics[0])),search:concern || ''};
   }
 
   function repeatedReply(text, history) {
