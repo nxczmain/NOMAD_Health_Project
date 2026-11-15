@@ -453,6 +453,34 @@ dialog{color:var(--ink);background:var(--white);max-height:calc(100vh - 34px);bo
 }
 .nomad-cover img { display:block; width:100%; height:auto; max-height:490px; object-fit:contain; }
 canvas.ham-avatar { background:#daeae9 url("assets/ham.svg") center/cover no-repeat; image-rendering:pixelated; }
+.ham-avatar.ham-small { width:48px;height:48px; }
+.ham-avatar.ham-medium { width:72px;height:72px; }
+.ham-avatar.ham-large { width:96px;height:96px; }
+.ham-inline { display:flex;align-items:center;gap:12px; }
+.ham-inline p { margin:.2rem 0; }
+.ham-routine { margin-top:14px;padding:12px 0 0;border-top:1px solid var(--line);flex-wrap:wrap; }
+.ham-routine > div { flex:1 1 170px; }
+.ham-composer { margin-bottom:8px; }
+.composer[data-area="mental"] textarea { min-height:5rem;line-height:1.5; }
+.composer[data-area="mental"] button { min-height:44px; }
+.ham-review { align-items:flex-start; }
+.ham-review > div,.ham-connection > div { min-width:0;overflow-wrap:anywhere; }
+.ham-connection,.ham-motor,.photo-ham { margin-bottom:12px; }
+.ham-connection pre { white-space:pre-wrap; }
+.ham-tour-offer { margin-top:10px; }
+.motor-countdown { font-size:1.25rem;font-weight:750;color:var(--blue); }
+.ham-motor #motor-status:empty { display:none; }
+.ham-toggle { display:flex;align-items:center;gap:8px;margin-top:14px; }
+.ham-pending .speaker { margin:0;color:var(--muted); }
+.ham-status.button { display:flex;align-items:center;gap:9px;width:100%;padding:4px 6px;text-align:left;font-size:.8rem;line-height:1.3; }
+.ham-status-short { display:none; }
+@media(max-width:540px) {
+  .ham-status.button { flex-direction:column;justify-content:center;text-align:center;padding:4px 1px;font-size:.64rem;gap:3px; }
+  .ham-status .ham-avatar { width:34px;height:34px; }
+  .ham-status-label { display:none; }
+  .ham-status-short { display:block; }
+  .ham-avatar.ham-large { width:72px;height:72px; }
+}
 .message .notice.critical { white-space:pre-wrap; }
 .health-transcript:empty { display:none; }
 .check-feedback:empty { display:none; }

@@ -293,6 +293,6 @@ const NetinMotor = (() => {
     return cancel;
   }
 
-  return {inputs,hands,games,gameOf,value,accuracy,baseline,demoHistory,drill,
+  return {inputs,hands,games,gameOf,value,accuracy,baseline,demoHistory,drill,watchFocus,
     play:{dock:drill,cargo,taps}};
 })();

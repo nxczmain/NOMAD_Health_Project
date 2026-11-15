@@ -81,7 +81,8 @@
     serio:       ['SSSSSSSS', 'SKKSSKKS', 'SEESSEES', 'SEESSEES'],
     pensando:    ['SSSSSKKS', 'SSEESSEE', 'SSEESSEE', 'SSSSSSSS'],
     sorprendido: ['SKKSSKKS', 'SSSSSSSS', 'SBESSBES', 'SEESSEES'],
-    guino:       ['SSSSSSSS', 'SSSSSSSS', 'SSSSSEES', 'SEESSEES']
+    guino:       ['SSSSSSSS', 'SSSSSSSS', 'SSSSSEES', 'SEESSEES'],
+    dormido:     ['SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS', 'SEESSEES']
   };
   var PARPADO = ['SSSSSSSS', 'SEESSEES'];
 
@@ -106,20 +107,35 @@
     rubor:       [[6, 10, 'R'], [7, 10, 'R'], [16, 10, 'R'], [17, 10, 'R']],
     gota:        [[4, 2, 'A'], [3, 3, 'A'], [4, 3, 'A'], [3, 4, 'A'], [4, 4, 'A']],
     burbuja:     [[20, 5, 'C'], [20, 3, 'C'], [21, 3, 'C'], [21, 0, 'C'], [22, 0, 'C'], [21, 1, 'C'], [22, 1, 'C']],
-    exclamacion: [[21, 0, 'M'], [21, 1, 'M'], [21, 2, 'M'], [21, 4, 'M']]
+    exclamacion: [[21, 0, 'M'], [21, 1, 'M'], [21, 2, 'M'], [21, 4, 'M']],
+    // Cuadros animados (se alternan solos mientras la pose está puesta).
+    burbuja1:    [[20, 5, 'C']],
+    burbuja2:    [[20, 5, 'C'], [20, 3, 'C'], [21, 3, 'C']],
+    zzzA:        [[19, 3, 'C'], [20, 3, 'C'], [21, 3, 'C'], [20, 4, 'C'], [19, 5, 'C'], [20, 5, 'C'], [21, 5, 'C']],
+    zzzB:        [[19, 3, 'C'], [20, 3, 'C'], [21, 3, 'C'], [20, 4, 'C'], [19, 5, 'C'], [20, 5, 'C'], [21, 5, 'C'], [22, 1, 'C'], [23, 0, 'C']],
+    manoA:       [[20, 16, 'W'], [21, 16, 'C'], [21, 15, 'W'], [22, 15, 'C'], [21, 14, 'W'], [22, 14, 'C'],
+                  [21, 13, 'S'], [22, 13, 'S'], [21, 12, 'S'], [22, 12, 'S'], [20, 12, 'S'], [21, 11, 'S'], [22, 11, 'S']],
+    manoB:       [[20, 16, 'W'], [21, 16, 'C'], [21, 15, 'W'], [22, 15, 'C'], [21, 14, 'W'], [22, 14, 'C'],
+                  [21, 13, 'S'], [22, 13, 'S'], [22, 12, 'S'], [23, 12, 'S'], [21, 12, 'S'], [22, 11, 'S'], [23, 11, 'S']]
   };
 
   // habla: [boca cerrada, media, abierta] mientras habla.
   // mov: amp = cuánto se balancea (px del sprite), periodo en ms, lado = vaivén lateral.
   // salto: brinco al entrar en la expresión.
+  // enReposo: la pose se mueve aunque Ham no hable (dormir, escuchar, saludar, esperar).
+  //           Sigue animada hasta que se cambie a otra expresión.
+  // animado: extras que se alternan cada `ms`.
   var EXPRESIONES = {
     neutral:     { ojos: 'normal',      reposo: 'original', habla: ['cerrada', 'media', 'abierta'],               mov: { amp: 1,   periodo: 700 } },
     feliz:       { ojos: 'feliz',       reposo: 'sonrisa',  habla: ['sonrisa', 'sonrisaMedia', 'sonrisaAbierta'], mov: { amp: 1.4, periodo: 380 }, rubor: true, salto: 1 },
     preocupado:  { ojos: 'preocupado',  reposo: 'triste',   habla: ['triste', 'tristeMedia', 'media'],            mov: { amp: 0.8, periodo: 1100 }, extra: 'gota' },
     serio:       { ojos: 'serio',       reposo: 'cerrada',  habla: ['cerrada', 'media', 'media'],                 mov: { amp: 0.6, periodo: 900 } },
-    pensando:    { ojos: 'pensando',    reposo: 'pequena',  habla: ['pequena', 'pequenaMedia', 'media'],          mov: { amp: 1,   periodo: 1400, lado: true }, extra: 'burbuja', sinParpadeo: true },
+    pensando:    { ojos: 'pensando',    reposo: 'pequena',  habla: ['pequena', 'pequenaMedia', 'media'],          mov: { amp: 1,   periodo: 1400, lado: true }, sinParpadeo: true, enReposo: true, animado: { cuadros: ['burbuja1', 'burbuja2', 'burbuja'], ms: 380 } },
     sorprendido: { ojos: 'sorprendido', reposo: 'o',        habla: ['o', 'media', 'abierta'],                     mov: { amp: 1,   periodo: 500 }, extra: 'exclamacion', salto: 2 },
-    guino:       { ojos: 'guino',       reposo: 'sonrisa',  habla: ['sonrisa', 'sonrisaMedia', 'sonrisaAbierta'], mov: { amp: 1,   periodo: 450 }, rubor: true, salto: 1, sinParpadeo: true }
+    guino:       { ojos: 'guino',       reposo: 'sonrisa',  habla: ['sonrisa', 'sonrisaMedia', 'sonrisaAbierta'], mov: { amp: 1,   periodo: 450 }, rubor: true, salto: 1, sinParpadeo: true },
+    saludo:      { ojos: 'normal',      reposo: 'sonrisa',  habla: ['sonrisa', 'sonrisaMedia', 'sonrisaAbierta'], mov: { amp: 1,   periodo: 600 }, rubor: true, salto: 1, enReposo: true, animado: { cuadros: ['manoA', 'manoB'], ms: 260 } },
+    escuchando:  { ojos: 'normal',      reposo: 'cerrada',  habla: ['cerrada', 'media', 'media'],                 mov: { amp: 1,   periodo: 1300 }, enReposo: true },
+    dormido:     { ojos: 'dormido',     reposo: 'pequena',  habla: ['pequena', 'pequena', 'pequenaMedia'],        mov: { amp: 1,   periodo: 2600 }, sinParpadeo: true, enReposo: true, animado: { cuadros: ['zzzA', 'zzzB'], ms: 700 } }
   };
   EXPRESIONES.feliz.sinParpadeo = true;
 
@@ -129,7 +145,8 @@
     serious: 'serio', importante: 'serio', alerta: 'serio',
     thinking: 'pensando', pensativo: 'pensando', duda: 'pensando',
     surprised: 'sorprendido', sorpresa: 'sorprendido', wow: 'sorprendido',
-    wink: 'guino', saludo: 'guino', hola: 'guino',
+    wink: 'guino', wave: 'saludo', hola: 'saludo', hello: 'saludo',
+    listening: 'escuchando', escucha: 'escuchando', sleeping: 'dormido', sleep: 'dormido', offline: 'dormido',
     normal: 'neutral', calm: 'neutral', tranquilo: 'neutral'
   };
 
@@ -246,6 +263,7 @@
     this._proxParpadeo = 0;
     this._finParpadeo = 0;
     this._timerNeutral = 0;
+    this._cuadro = 0;
     this._tick = this._tick.bind(this);
     var mq = global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)');
     this._movReducido = !!(mq && mq.matches);
@@ -293,6 +311,7 @@
     pegar(g, BOCAS[this.boca || e.reposo], POS_BOCA);
     if (e.rubor) puntos(g, EXTRAS.rubor);
     if (e.extra) puntos(g, EXTRAS[e.extra]);
+    if (e.animado) puntos(g, EXTRAS[e.animado.cuadros[this._cuadro % e.animado.cuadros.length]]);
     return g;
   };
 
@@ -369,7 +388,7 @@
 
     var dx = 0, dy = 0;
     if (!this._movReducido) {
-      if (this.hablando && e.mov.amp) {
+      if ((this.hablando || e.enReposo) && e.mov.amp) {
         dy = limitar(Math.round(Math.sin(t / e.mov.periodo * 2 * Math.PI) * e.mov.amp), -1, 1);
         if (e.mov.lado) dx = limitar(Math.round(Math.sin(t / (e.mov.periodo * 2) * 2 * Math.PI) * 1.2), -1, 1);
       }
@@ -379,6 +398,11 @@
         activo = true;
       }
     }
+
+    if (e.enReposo) activo = true;
+    this._cuadro = !e.animado ? 0
+      : this._movReducido ? e.animado.cuadros.length - 1
+      : Math.floor(t / e.animado.ms) % e.animado.cuadros.length;
 
     var parpadeando = false;
     if (this.hablando && this.op.parpadeo) {
@@ -390,7 +414,7 @@
     }
 
     this.dx = dx; this.dy = dy;
-    var clave = [this.exp, this.boca, dx, dy, parpadeando].join('|');
+    var clave = [this.exp, this.boca, dx, dy, parpadeando, this._cuadro].join('|');
     if (clave !== this._clave) {
       this._clave = clave;
       this._pintar(this._cuadricula(parpadeando));

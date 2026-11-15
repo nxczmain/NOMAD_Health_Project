@@ -48,6 +48,7 @@ let readAloud = true;
 let voiceRequest = 0;
 let voiceText = '';
 let busy = false;
+let hamChatWork = '';
 let guideTopic = '';
 let selectedDay = null;
 let reportLength = 7;
@@ -55,6 +56,7 @@ let motorRound;
 let motorResult;
 let motorMessage = '';
 let motorGame = 'dock';
+let renderedRoute;
 let rosterReset = false;
 let deletedCrew = new Set();
 
@@ -145,7 +147,8 @@ function cameraView() {
     '<section class="work-sheet photo-capture">'+(pendingPhoto ? '<div class="camera-frame"><img src="'+validPhoto(pendingPhoto)+'" alt="Photo preview"></div>' :
       error ? '' : '<div class="camera-frame"><video id="photo-video" autoplay muted playsinline aria-label="Camera preview"></video>'+
       '<span class="camera-guide" aria-hidden="true"></span><span id="camera-count" class="camera-count" hidden aria-hidden="true"></span></div>')+
-    '<p id="photo-status" role="status">'+(error ? escape(error) : pendingPhoto ? (working ? 'Saving your photo…' : 'Review your photo.') : 'Opening the camera…')+'</p><div class="actions">'+
+    '<div class="ham-inline photo-ham">'+UI.ham('ham-small',2,'camera')+'<p id="photo-status" role="status">'+
+    (error ? escape(error) : pendingPhoto ? (working ? 'Saving your photo…' : 'Review your photo.') : 'Opening the camera…')+'</p></div><div class="actions">'+
     (pendingPhoto ? button('Use photo','use-camera','primary',working ? 'disabled' : '')+button('Retake','retry-camera','',working ? 'disabled' : '') :
       error ? button('Retry camera','retry-camera','primary') : button('Take photo','capture-camera','primary','disabled'))+
     button(destination === 'routine' ? 'Continue without photo' : 'Back to Home','skip-camera','',working && pendingPhoto ? 'disabled' : '')+'</div></section>';
@@ -241,6 +244,7 @@ async function submitLogin(form) {
     if (dailyPhotos.has(E.dateKey()) && flow().photo !== 'done') markFlow('photo');
     if (simulation() || dailyPhotos.has(E.dateKey()) || flow().check === 'urgent') showRoute('panel');
     else void openCamera('routine');
+    void checkModel();
   } catch (failure) { error.textContent = failure.message; }
   finally { delete form.dataset.pending; submit.disabled = false; }
 }
@@ -273,12 +277,14 @@ function exitCrew() {
   summaryPending = '';
   guideTopic = '';
   busy = false;
+  hamChatWork = '';
   if (model === 'checking') model = 'unchecked';
   selectedDay = null;
   reportLength = 7;
   motorResult = undefined;
   motorMessage = '';
   motorGame = 'dock';
+  hamTourOwner = undefined;
   if ($('modal').open) $('modal').close();
   showRoute('home');
 }
@@ -287,32 +293,176 @@ let hamPlayer;
 let hamCanvases = [];
 let hamUtterance;
 let hamSpeechText = '';
+let hamTyping;
+let hamTypingTimer;
+let hamMoment;
+let hamMomentTimer;
+let lastHomeGreeting;
+let hamTourOwner;
+const hamTour = [
+  {route:'panel',title:'Home',text:'Check the daily routine and start your next step.'},
+  {route:'bot',title:'Assistant',text:'Chat with Ham or complete your daily check-in.'},
+  {route:'health',title:'Health',text:'Review measurements, log physical changes or save a mood check-in.'},
+  {route:'records',title:'Records',text:'Find your check-ins, journals and saved reports.'}
+];
+const hamReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const passiveHam = {sidebar:{},panel:{}};
+const canAnimateHam = () => appearance.animateHam && !hamReducedMotion.matches;
+const hamUrgent = () => Boolean(session && activeEmergency());
+
+function drawHam(canvas, pose = 'neutral') {
+  if (canvas?.getContext('2d')) HamAvatar.dibujarEstatico(canvas,pose,Number(canvas.dataset.escala));
+}
+
+function setPassiveHam(slot, canvas, pose = 'neutral') {
+  const active = canAnimateHam() && canvas && pose !== 'neutral' && pose !== 'serio';
+  if (slot.canvas === canvas && slot.pose === pose && slot.active === !!active) return;
+  if (slot.active) {
+    slot.player.quitarLienzo(slot.canvas);
+    drawHam(slot.canvas,slot.canvas.isConnected && hamUrgent() ? 'serio' : 'neutral');
+  }
+  if (!canAnimateHam()) {
+    slot.player?.destruir();
+    slot.player = undefined;
+  }
+  if (active) {
+    slot.player ||= HamAvatar.crear(null,{volverNeutralMs:0,parpadeo:false});
+    slot.player.agregarLienzo(canvas,Number(canvas.dataset.escala));
+    if (pose !== slot.player.exp) slot.player.expresion(pose);
+  } else {
+    if (slot.player && slot.player.exp !== 'neutral') slot.player.expresion('neutral');
+    drawHam(canvas,pose);
+  }
+  Object.assign(slot,{canvas,pose,active:!!active});
+}
+
+function syncHamPresence() {
+  const urgent = hamUrgent();
+  const sidebar = $('ham-status');
+  const sidePose = hamPoseFor({model,busy:busy || !!summaryPending,urgent});
+  if (sidebar && session) {
+    const label = {serio:'Ham · Emergency guidance',dormido:'Ham is asleep · Qwen not connected',
+      pensando:'Ham is thinking…',neutral:'Ham is ready'}[sidePose];
+    const short = {serio:'Urgent',dormido:model === 'checking' ? 'Checking' : 'Asleep',pensando:'Thinking',neutral:'Ready'}[sidePose];
+    if (sidebar.getAttribute('aria-label') !== label) {
+      sidebar.setAttribute('aria-label',label);
+      sidebar.querySelector('.ham-status-label').textContent = label;
+    }
+    sidebar.querySelector('.ham-status-short').textContent = short;
+    setPassiveHam(passiveHam.sidebar,sidebar.querySelector('canvas'),sidePose);
+  } else {
+    setPassiveHam(passiveHam.sidebar);
+  }
+  const main = $('main');
+  const typing = hamTyping?.control.isConnected ? main.querySelector(hamTyping.selector) : null;
+  const pending = main.querySelector('[data-ham-presence="pending"]');
+  const moment = hamMoment && main.querySelector('[data-ham-presence="'+hamMoment.kind+'"]');
+  const resting = main.querySelector('[data-ham-presence="dormido"], [data-ham-presence="pensando"]');
+  const spoken = hamCanvases.some(canvas => canvas.isConnected);
+  const target = pending || typing || moment || resting;
+  if (urgent && hamCanvases.length) detachHamVoice();
+  if (urgent) main.querySelectorAll('[data-ham-presence]').forEach(canvas => drawHam(canvas,'serio'));
+  const pose = urgent ? 'serio' : pending ? 'pensando' : typing ? 'escuchando' : moment ? hamMoment.pose : resting?.dataset.hamPresence;
+  setPassiveHam(passiveHam.panel,spoken || $('modal').open ? undefined : target,pose);
+}
+
+function showHamMoment(kind, pose, duration) {
+  if (hamUrgent() || !canAnimateHam()) return;
+  clearTimeout(hamMomentTimer);
+  hamMoment = {kind,pose};
+  syncHamPresence();
+  hamMomentTimer = setTimeout(() => { hamMoment = undefined; syncHamPresence(); },duration);
+}
+
+function greetWithHam(route) {
+  if (route !== 'panel' || hamUrgent() || busy || $('modal').open) return;
+  const date = E.dateKey();
+  if (state.hamGreetingDate === date || lastHomeGreeting?.owner === session && lastHomeGreeting.date === date) return;
+  lastHomeGreeting = {owner:session,date};
+  const text = $('ham-home-copy').textContent;
+  save({...state,hamGreetingDate:date});
+  if (readAloud) speakReply({role:'assistant',content:'[[saludo]]'+text},$('main').querySelector('[data-ham-presence="home"]'));
+  else showHamMoment('home','saludo',1800);
+}
+
+function prepareHamTour(route) {
+  if (route !== 'panel' || hamUrgent() || state.hamTourSeen || hamTourOwner === session) return;
+  hamTourOwner = session;
+  save({...state,hamTourSeen:true});
+}
+
+function showHamTour(index) {
+  if (!session || hamUrgent() || busy || summaryPending) return;
+  hamTourOwner = undefined;
+  if ($('modal').open) $('modal').close();
+  const stop = hamTour[index];
+  if (!stop) return;
+  if (stop.route === 'bot') assistantTab = 'chat';
+  if (stop.route === 'health') healthTab = 'general';
+  showRoute(stop.route);
+  openModal(stop.title,'<p class="micro">Tour · '+(index+1)+' of '+hamTour.length+'</p>'+
+    '<div class="ham-inline">'+UI.ham('ham-medium',3)+'<p>'+stop.text+'</p></div>'+
+    '<div class="actions">'+button('Skip tour','skip-ham-tour')+
+    button(index === hamTour.length-1 ? 'Finish tour' : 'Next','ham-tour','primary','data-step="'+(index+1)+'"')+'</div>');
+  drawHam($('modal').querySelector('canvas.ham-avatar'));
+  syncHamPresence();
+  $('modal').querySelector('[data-action="ham-tour"]').focus();
+}
+
+function listenToHamInput(control) {
+  const form = control.form;
+  const selector = {
+    'intake-form':'[data-ham-presence="check"]',
+    'mood-form':'[data-ham-presence="mood"]',
+    'journal-form':'[data-ham-presence="journal"]',
+    'health-chat-form':form?.dataset.area === 'mental' ? '[data-ham-presence="mental"]' : ''
+  }[form?.id];
+  if (!selector || !control.matches('textarea, input[name="answer"]') || busy || hamUrgent() || !canAnimateHam()) return;
+  const canvas = $('main').querySelector(selector);
+  if (canvas && hamCanvases.length) detachHamVoice();
+  clearTimeout(hamTypingTimer);
+  hamTyping = {control,selector};
+  syncHamPresence();
+  hamTypingTimer = setTimeout(() => { hamTyping = undefined; syncHamPresence(); },1500);
+}
+
+function pendingHam(scope) {
+  if (!busy || hamChatWork !== scope || hamUrgent()) return '';
+  return '<article class="message assistant ham-pending"><p class="speaker">'+UI.ham('',2,'pending')+' Ham is thinking…</p></article>';
+}
+
+function detachHamVoice() {
+  hamPlayer?.destruir();
+  hamPlayer = undefined;
+  for (const canvas of hamCanvases) drawHam(canvas,hamUrgent() ? 'serio' : 'neutral');
+  hamCanvases = [];
+}
 
 function attachHam(selected, restore = false) {
-  if (!globalThis.HamAvatar) return;
-  const message = selected || ($('chat-log') || $('health-chat-log'))?.querySelector('.message.assistant:last-of-type canvas.ham-avatar');
   try {
-    hamPlayer ||= HamAvatar.crear(null,{volverNeutralMs:0});
-    for (const item of hamCanvases) hamPlayer.quitarLienzo(item);
-    hamCanvases = [];
     if (restore) {
       for (const item of $('main').querySelectorAll('canvas.ham-avatar')) {
-        if (item.getContext('2d')) HamAvatar.dibujarEstatico(item,'neutral',Number(item.dataset.escala));
+        drawHam(item,item.closest('.message.urgent') ? 'serio' : 'neutral');
       }
-      if (!hamSpeechText) return;
+      if (hamCanvases.some(item => !item.isConnected)) detachHamVoice();
+      syncHamPresence();
+      return;
     }
-    if (message?.closest('.message') && message.getContext('2d')) {
-      hamPlayer.agregarLienzo(message,Number(message.dataset.escala));
-      hamCanvases.push(message);
-    }
+    const canvas = selected || ($('chat-log') || $('health-chat-log'))?.querySelector('.message.assistant:last-of-type canvas.ham-avatar');
+    if (!canvas || canvas.closest('.assistant-head') || !canAnimateHam() || hamUrgent()) return;
+    if (!canvas.getContext('2d')) return;
+    if (passiveHam.panel.canvas === canvas) setPassiveHam(passiveHam.panel);
+    hamPlayer = HamAvatar.crear(canvas,{volverNeutralMs:0});
+    hamCanvases = [canvas];
+    syncHamPresence();
   } catch { /* CSS shows the original sprite on unsupported canvases. */ }
 }
 
 function resetHam() {
   hamUtterance = undefined;
   hamSpeechText = '';
-  hamPlayer?.detener();
-  hamPlayer?.expresion('neutral');
+  detachHamVoice();
+  syncHamPresence();
 }
 
 function stopSpeech() {
@@ -326,14 +476,19 @@ function stopSpeech() {
 function animateHam(turn, canvas, audio = false) {
   if (turn?.role !== 'assistant' || !turn.content) return;
   stopSpeech();
-  const text = (turn.paragraph || (turn.sections ? summaryParagraph(turn) : turn.content)).replace(/\[\d+\]/g,'').replace(/ +([.,])/g,'$1').trim();
+  let text = (turn.paragraph || (turn.sections ? summaryParagraph(turn) : turn.content)).replace(/\[\d+\]/g,'').replace(/ +([.,])/g,'$1').trim();
+  if (turn.mode === 'mental' || turn.mentalSupport) {
+    text = HamAvatar.separarEtiquetas(text).segmentos.map(({texto,expresion}) =>
+      '[['+(['sorprendido','guino'].includes(expresion) ? 'neutral' : expresion)+']]'+texto).join('');
+  }
   const clean = AI.clearTags(text);
   if (!clean) return;
   hamSpeechText = text;
   attachHam(canvas);
   if (!audio) {
+    const request = voiceRequest;
     if (hamCanvases.length) void hamPlayer.decir(text,{duracionMs:Math.max(800,clean.length * 46)}).then(() => {
-      if (hamSpeechText === text) hamSpeechText = '';
+      if (voiceRequest === request && hamSpeechText === text) resetHam();
     });
     else hamSpeechText = '';
     return;
@@ -349,22 +504,22 @@ function speakReply(turn, canvas) {
   animateHam(turn,canvas,true);
 }
 
-function presentHam(turn) {
-  animateHam(turn,undefined,readAloud);
+function presentHam(turn, canvas) {
+  animateHam(turn,canvas,readAloud);
 }
 
 function browserSpeech(id) {
   const voices = globalThis.speechSynthesis?.getVoices().filter(voice => voice.localService) || [];
   const voice = voices.find(item => /^en(?:[-_]|$)/i.test(item.lang)) || voices[0];
   if (!voice) {
-    if (hamCanvases.length) void hamPlayer.decir(hamSpeechText);
+    if (hamCanvases.length) void hamPlayer.decir(hamSpeechText).then(() => { if (id === voiceRequest) resetHam(); });
     return notify('Windows could not play this reply. Check the installed voices and sound output.');
   }
   const reply = new SpeechSynthesisUtterance(voiceText);
   reply.voice = voice;
   reply.volume = appearance.volume / 100;
   if (hamCanvases.length) void hamPlayer.decir(hamSpeechText,{utterance:reply});
-  reply.onend = () => { if (id === voiceRequest) { hamSpeechText = ''; voiceText = ''; } };
+  reply.onend = () => { if (id === voiceRequest) { resetHam(); voiceText = ''; } };
   reply.onerror = () => { if (id === voiceRequest) { resetHam(); notify('Windows could not play this reply.'); } };
   speechSynthesis.speak(reply);
 }
@@ -396,15 +551,20 @@ async function openCamera(destination, retake = false) {
       const take = document.querySelector('[data-action="capture-camera"]');
       screen.working = false;
       screen.capture = () => {
+        stopSpeech();
         screen.working = true;
         take.disabled = true;
         signal.removeEventListener('abort',aborted);
         screen.capture = undefined;
         resolve();
       };
-      $('photo-status').textContent = 'Center your face in the guide, then choose Take photo.';
+      const instruction = 'Center your face and look at the camera. Choose Take photo when ready.';
+      $('photo-status').textContent = instruction;
       take.disabled = false;
       take.focus();
+      if (readAloud && !hamUrgent()) {
+        speakReply({role:'assistant',content:instruction},$('main').querySelector('[data-ham-presence="camera"]'));
+      }
     }),seconds => {
       const count = $('camera-count');
       count.hidden = false;
@@ -416,6 +576,7 @@ async function openCamera(destination, retake = false) {
     screen.pendingPhoto = {crew:session.key,date:E.dateKey(captured),env:state.env,capturedAt:captured.toISOString(),src};
     screen.working = false;
     render();
+    showHamMoment('camera','sorprendido',600);
     document.querySelector('[data-action="use-camera"]')?.focus();
   } catch (error) {
     if (signal.aborted) return;
@@ -591,8 +752,8 @@ function intakeSummary(entry, urgent) {
 }
 
 function intakeTranscript(current, prompt) {
-  const turns = [...current.turns,...(prompt ? [{role:'assistant',content:prompt.prompt}] : [])];
-  return turns.map(turn => messageBubble(turn)).join('');
+  return current.turns.map(turn => messageBubble(turn)).join('')+
+    (prompt ? messageBubble({role:'assistant',content:prompt.prompt},'',UI.ham('ham-large',4,'check')) : '');
 }
 
 function intakeComposer(prompt) {
@@ -616,7 +777,9 @@ function intakeComposer(prompt) {
 function speakIntake() {
   const current = draft();
   const prompt = current?.mode === 'chat' ? CI.question(current) : null;
-  if (prompt && view() === 'bot' && assistantTab === 'check') presentHam({role:'assistant',content:prompt.prompt});
+  if (readAloud && prompt && view() === 'bot' && assistantTab === 'check') {
+    speakReply({role:'assistant',content:prompt.prompt},$('main').querySelector('[data-ham-presence="check"]'));
+  }
 }
 
 async function prepareIntakeQuestion(current, openAssistant = false) {
@@ -624,7 +787,7 @@ async function prepareIntakeQuestion(current, openAssistant = false) {
   const activeSession = session;
   const needsModel = available.length && !current.next && !current.acknowledgment &&
     !['urgent','symptoms'].includes(available[0].key) && !['offline','missing'].includes(model);
-  if (needsModel) busy = true;
+  if (needsModel) { busy = true; hamChatWork = 'check'; }
   if (openAssistant) showRoute('bot');
   else if (needsModel && view() === 'bot') render();
   if (!available.length) return finishIntake();
@@ -632,6 +795,8 @@ async function prepareIntakeQuestion(current, openAssistant = false) {
     const planned = await AI.checkInQuestion(available,current,environment().name).catch(() => null);
     if (session !== activeSession) return;
     busy = false;
+    hamChatWork = '';
+    syncHamPresence();
     if (draft() !== current) return;
     const updated = CI.applyContext(current,planned?.covered);
     const remaining = CI.questions(updated);
@@ -681,6 +846,7 @@ async function submitIntake(value, skip = false, file) {
     if (!kind && !skip && value.trim() && freeResponse &&
         !(prompt.metric && /^[\d\s.,/°]+(?:c|bpm|mm\s*hg|mg\s*\/\s*dl|hrs?|hours?)?$/i.test(value))) {
       busy = true;
+      hamChatWork = 'check';
       if (view() === 'bot') render();
       kind = await AI.assessSafety(value,current.turns).catch(() => '');
       if (session !== activeSession || draft() !== current) return;
@@ -693,13 +859,16 @@ async function submitIntake(value, skip = false, file) {
   } catch (error) {
     if (session === activeSession && view() === 'bot') {
       busy = false;
+      hamChatWork = '';
       render();
       const form = $('intake-form');
       if (form?.elements.answer) form.elements.answer.value = value;
       form?.querySelector('.error')?.replaceChildren(error.message);
     }
     return;
-  } finally { if (session === activeSession) busy = false; }
+  } finally {
+    if (session === activeSession) { busy = false; hamChatWork = ''; syncHamPresence(); }
+  }
   if (session !== activeSession || draft() !== current) return;
   stopSpeech();
   if (CI.urgent(next)) return finishIntake(next);
@@ -742,7 +911,7 @@ async function finishIntake(current = draft()) {
   }
   if (urgent && view() !== 'bot') showRoute('bot');
   else if (view() === 'bot') render();
-  if (urgent && urgentReport && ['violence','self-harm','unresponsive','medical'].includes(urgent)) {
+  if (urgent && urgentReport && ['violence','self-harm','self-and-others','unresponsive','medical'].includes(urgent)) {
     addEmergencyHandoff(urgentReport.content,urgent,turn,owner);
   }
   if (hasData && !urgent && !current.answers.statusUpdate) {
@@ -848,7 +1017,7 @@ function paragraphReply(value) {
   if (value.sections && !value.urgent) return replySections(value)+actions;
   return '<p'+(value.urgent ? ' class="notice critical"' : '')+'>'+escape(AI.clearTags(summaryParagraph(value)))+'</p>'+
     sourcesView(value.sources)+actions+
-    (value.handoff ? '<p class="micro">Report to responders: “'+escape(value.handoff)+'”</p>' : '');
+    (value.handoff ? '<p class="micro emergency-handoff">Report to responders: “'+escape(AI.clearTags(value.handoff))+'”</p>' : '');
 }
 
 function motorHistory() {
@@ -898,11 +1067,11 @@ function motorView() {
       button(item.name,'motor-game',key === motorGame ? 'primary' : '',
         'data-game="'+key+'" aria-pressed="'+(key === motorGame)+'"'+(motorRound ? ' disabled' : ''))).join('')+'</div>'+
     '<div class="work-grid"><section class="work-sheet"><h2>'+game.name+'</h2>'+
-    (motorRound ? '<p id="motor-status" role="status"></p><div id="motor-board" class="motor-board motor-'+motorGame+'" aria-label="'+game.name+'">'+
+    '<div class="ham-inline ham-motor">'+UI.ham('ham-small',2,'motor')+
+    '<div><p>'+escape(game.description)+'</p><p id="motor-status" role="status">'+escape(motorMessage)+'</p></div></div>'+
+    (motorRound ? '<div id="motor-board" class="motor-board motor-'+motorGame+'" aria-label="'+game.name+'">'+
       grid+'</div><div class="actions">'+button('End round','motor-cancel')+'</div>' :
-      '<p id="motor-status" role="status">'+escape(motorMessage)+'</p>'+
-      (result ? '<h3>'+(motorResult ? 'Round complete' : 'Today’s result')+'</h3>'+motorSummary(result) :
-        '<div class="game-preview">'+sprite+'<p>'+game.description+'</p></div>')+
+      (result ? '<h3>'+(motorResult ? 'Round complete' : 'Today’s result')+'</h3>'+motorSummary(result) : '')+
       '<form id="motor-form"><fieldset class="motor-hands"><legend>Which hand will you use?</legend>'+
       Object.entries(Motor.hands).map(([key,label]) => '<label><input type="radio" name="hand" value="'+key+'"'+
         ((result?.hand || motorHistory().at(-1)?.hand || 'right') === key ? ' checked' : '')+'> '+label+'</label>').join('')+'</fieldset>'+
@@ -913,32 +1082,56 @@ function motorView() {
     '<section class="work-sheet report-notes motor-log"><h2>Motor log</h2>'+motorHistoryFilter()+'</section>';
 }
 
+function speakMotorGuide(text = Motor.games[motorGame].description) {
+  if (readAloud && !hamUrgent()) speakReply({role:'assistant',content:text},$('main').querySelector('[data-ham-presence="motor"]'));
+}
+
 function startMotorRound(hand) {
   if (motorRound || !Object.hasOwn(Motor.hands,hand)) return;
   const round = {date:E.dateKey(),env:state.env,hand,game:motorGame};
   motorRound = round;
   motorResult = undefined;
   motorMessage = '';
+  stopSpeech();
   render();
-  $('motor-board').scrollIntoView({block:'nearest'});
-  round.cancel = Motor.play[round.game]($('motor-board'),$('motor-status'),result => {
+  round.board = $('motor-board');
+  round.board.scrollIntoView({block:'nearest'});
+  const status = $('motor-status');
+  const controller = new AbortController();
+  let timer;
+  round.cancel = () => { clearTimeout(timer); controller.abort(); };
+  Motor.watchFocus(controller.signal,stopMotorRound);
+  const start = () => {
+    round.cancel();
+    status.classList.remove('motor-countdown');
+    status.textContent = '';
+    round.cancel = Motor.play[round.game](round.board,status,finish,stopMotorRound,{volume:appearance.volume});
+  };
+  const finish = result => {
     motorRound = undefined;
     motorResult = {date:round.date,env:round.env,hand,game:round.game,...result,sample:simulation(),scene:'wildlife'};
     if (motorHistory().some(day => day.date === round.date && day.env === round.env && Motor.gameOf(day) === round.game)) {
       markFlow('motor');
       motorMessage = 'Practice complete. Your saved daily result is still in the log.';
     } else if (save({...state,motorLogs:[...motorHistory(),motorResult],dailyFlow:{...flow(),date:round.date,motor:'done'}})) {
-      motorMessage = 'Daily result saved.';
+      motorMessage = 'Result saved. Compare it in Motor log.';
     } else {
       motorMessage = 'The result could not be saved.';
     }
     render();
     $('motor-form').querySelector('button').focus({preventScroll:true});
-  },stopMotorRound,{volume:appearance.volume});
+    speakMotorGuide(motorMessage);
+  };
+  const countdown = seconds => {
+    status.classList.add('motor-countdown');
+    status.textContent = 'Starting in '+seconds+'…';
+    timer = setTimeout(seconds === 1 ? start : () => countdown(seconds-1),1000);
+  };
+  countdown(3);
 }
 
 function stopMotorRound(message) {
-  motorRound?.cancel();
+  motorRound?.cancel?.();
   motorRound = undefined;
   motorMessage = message;
   render();
@@ -983,12 +1176,16 @@ function reportView() {
 
 function render() {
   const route = view();
+  const routeChanged = route !== renderedRoute;
+  renderedRoute = route;
+  if (route === 'motor' && motorRound?.board?.isConnected) return syncHamPresence();
   if (route !== 'journal' && journalDraft) flushJournal(true);
   if (route !== 'motor' && motorRound) {
     motorRound.cancel?.();
     motorRound = undefined;
   }
   const workspace = !!session;
+  prepareHamTour(route);
   document.documentElement.dataset.stage = workspace ? state.env : stageChoice;
   $('sidebar').hidden = !workspace;
   $('brand').innerHTML = workspace ? '' : UI.icon('orbit')+' NOMAD';
@@ -1000,6 +1197,9 @@ function render() {
     $('sidebar-brand').innerHTML = UI.icon('orbit')+' NOMAD';
     $('sidebar-crew').innerHTML = portrait(state.profile.name,validPhoto(crewPortrait))+'<div><strong>'+escape(state.profile.name)+
       '</strong><small>'+escape(state.profile.role)+'</small></div>';
+    if (!$('ham-status')) $('ham-sidebar').innerHTML = button(UI.ham('ham-small')+
+      '<span class="ham-status-label"></span><span class="ham-status-short" aria-hidden="true"></span>',
+      'ham-status','ham-status','id="ham-status"');
     $('nav').innerHTML = navigation(routes);
     $('utilities').innerHTML = navigation(utilityRoutes);
   }
@@ -1007,6 +1207,8 @@ function render() {
     ({home,camera:cameraView,panel:workspaceHome,check:checkView,motor:motorView,bot:assistantView,semana:reportView,guias:documentsView,
       health:healthView,records:recordsView,settings:settingsView,journal:journalView})[route]();
   attachHam(undefined,true);
+  greetWithHam(route);
+  if (route === 'motor' && routeChanged) speakMotorGuide();
   const graph = $('measurement-trend');
   if (graph) updateTrend(graph,wearableSnapshot());
   const log = $('chat-log');
@@ -1161,15 +1363,18 @@ async function submitCheck(event) {
 }
 
 async function checkModel() {
+  if (!session || model === 'checking' || busy) return;
   const currentSession = session;
   model = 'checking';
-  render();
+  if (view() === 'settings') render();
+  else syncHamPresence();
   let result;
   try { result = (await AI.modelStatus()).ready ? 'ready' : 'missing'; }
   catch { result = 'offline'; }
   if (session !== currentSession) return;
   model = result;
-  if (['bot','settings'].includes(view())) render();
+  if (view() === 'settings') render();
+  else syncHamPresence();
 }
 async function sendMessage(query, mode = 'chat', searchContext = '') {
   if (!session || !query || busy || summaryPending) return;
@@ -1193,9 +1398,10 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
   let kind = CI.emergencyKind(query);
   if (!kind && !resolved && conversational) {
     busy = true;
+    hamChatWork = mode;
     if (isVisible()) render();
     try { kind = await AI.assessSafety(query,safetyHistory).catch(() => ''); }
-    finally { if (session === currentSession) busy = false; }
+    finally { if (session === currentSession) { busy = false; hamChatWork = ''; } }
     if (session !== currentSession) return;
   }
   const nextEnv = mode === 'chat' ? E.detectEnvironmentChange(query) : null;
@@ -1227,6 +1433,7 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
     const context = focus ? physicalContext(present,intent?.prior) : null;
     let social;
     busy = true;
+    hamChatWork = conversational ? mode : 'chat';
     if (isVisible()) render();
     try {
       let result;
@@ -1256,7 +1463,8 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
       turn.companion = !!social && !social.health;
       const reply = review && !turn.modelTurn ? localReview(mode, result?.text) : result;
       response = {content:reply?.text || reply,paragraph:reply?.paragraph,
-        sections:reply?.sections,sources:reply?.sources,modelTurn:turn.modelTurn,companion:turn.companion};
+        sections:reply?.sections,sources:reply?.sources,modelTurn:turn.modelTurn,companion:turn.companion,
+        mentalSupport:emotional || undefined};
       if ((turn.modelTurn && !emotional) || turn.companion) model = 'ready';
     } catch (error) {
       if (session === currentSession && focus) {
@@ -1274,7 +1482,7 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
           'Ham could not respond. Load mission documents to find relevant passages.';
         response = {content:text,related};
       }
-    } finally { if (session === currentSession) busy = false; }
+    } finally { if (session === currentSession) { busy = false; hamChatWork = ''; } }
   }
   if (session !== currentSession) return;
   let reply;
@@ -1289,28 +1497,33 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
   }
   if (isVisible()) {
     render();
-    $(scoped ? 'health-chat-form' : 'chat-form')?.elements.query.focus();
+    if (urgent && reply) $('main').querySelector('[data-incident="'+CSS.escape(reply.incidentId)+'"]')?.focus({preventScroll:true});
+    else $(scoped ? 'health-chat-form' : 'chat-form')?.elements.query.focus();
     presentHam(reply);
   } else if (['bot','settings'].includes(view()) ||
       (view() === 'health' && !(healthTab === 'physical' && physicalTab === 'ultrasound'))) {
     render();
-  }
+  } else syncHamPresence();
   if (urgent && view() !== 'bot' && !scoped) showRoute('bot');
   if (kind && reply) addEmergencyHandoff(query,kind,reply,currentSession);
 }
 
 function addEmergencyHandoff(report,kind,immediate,owner) {
   void AI.emergencyHandoff(report,kind).then(handoff => {
-    if (!handoff || session !== owner || !immediate?.urgent) return;
-    const update = reply => reply === immediate ? {...reply,handoff} : reply;
-    if (!save({...state,conversations:(state.conversations || []).map(update)})) return;
+    if (!handoff || session !== owner || !immediate?.incidentId) return;
+    const update = reply => reply?.incidentId === immediate.incidentId ? {...reply,handoff} : reply;
+    if (!save({...state,conversations:(state.conversations || []).map(update),urgentAlert:update(state.urgentAlert)})) return;
     chat = chat.map(update);
-    const last = $('chat-log')?.lastElementChild;
-    if (view() === 'bot' && assistantTab === 'chat' && chat.at(-1)?.handoff === handoff && last?.classList.contains('assistant')) {
+    const bubbles = $('main').querySelectorAll('[data-incident="'+CSS.escape(immediate.incidentId)+'"]');
+    for (const bubble of bubbles) {
+      if (bubble.querySelector('.emergency-handoff')) continue;
+      const log = bubble.closest('#chat-log');
+      const atBottom = log && log.scrollHeight-log.clientHeight-log.scrollTop < 8;
       const note = document.createElement('p');
-      note.className = 'micro';
-      note.textContent = 'Report to responders: "'+handoff+'"';
-      last.append(note);
+      note.className = 'micro emergency-handoff';
+      note.textContent = 'Report to responders: “'+AI.clearTags(handoff)+'”';
+      bubble.append(note);
+      if (atBottom) log.scrollTop = log.scrollHeight;
     }
   }).catch(() => {});
 }
@@ -1371,6 +1584,19 @@ document.addEventListener('click',(event) => {
   const control = event.target.closest('[data-action]');
   if (!control) return;
   const {action} = control.dataset;
+  if (action === 'ham-tour' && session) return showHamTour(Number(control.dataset.step));
+  if (action === 'skip-ham-tour' && session) {
+    hamTourOwner = undefined;
+    if ($('modal').open) $('modal').close();
+    else render();
+    return;
+  }
+  if (action === 'ham-status' && session) {
+    if (hamUrgent()) return showRoute('bot');
+    if (hamPoseFor({model}) === 'dormido') return showRoute('settings','check-connection');
+    if (!busy) assistantTab = 'chat';
+    return showRoute('bot');
+  }
   if (action === 'enter-crew') return loginModal(control.dataset.id);
   if (action === 'delete-crew') return deleteCrewModal(control.dataset.id);
   if (action === 'exit-crew') return exitCrew();
@@ -1392,6 +1618,7 @@ document.addEventListener('click',(event) => {
     motorResult = undefined;
     motorMessage = '';
     render();
+    speakMotorGuide();
     return document.querySelector('[data-action="motor-game"][aria-pressed="true"]').focus();
   }
   if (action === 'daily-camera') return void openCamera('panel',dailyPhotos.has(E.dateKey()));
@@ -1459,6 +1686,7 @@ document.addEventListener('click',(event) => {
 });
 document.addEventListener('input',(event) => {
   const control = event.target;
+  listenToHamInput(control);
   if (control.form?.id === 'journal-form') queueJournal(control);
   if (control.form?.id === 'mood-form') moodDraft = readMoodForm(control.form);
   if (control.form?.id === 'body-form') {
@@ -1560,11 +1788,18 @@ globalThis.chrome?.webview?.addEventListener('message',({data}) => {
   const event = new Event(data.event);
   if (data.event === 'boundary') Object.defineProperty(event,'charIndex',{value:data.position});
   hamUtterance?.dispatchEvent(event);
-  if (data.event === 'end') { hamUtterance = undefined; hamSpeechText = ''; voiceText = ''; }
+  if (data.event === 'end') { resetHam(); voiceText = ''; }
+});
+hamReducedMotion.addEventListener('change',() => {
+  if (!canAnimateHam()) detachHamVoice();
+  syncHamPresence();
 });
 window.addEventListener('pagehide', () => { flushJournal(false); cameraScreen?.controller.abort(); });
 $('modal').addEventListener('close', event => {
-  if (!event.target.open) event.target.replaceChildren();
+  if (!event.target.open) {
+    event.target.replaceChildren();
+    syncHamPresence();
+  }
 });
 async function start() {
   if (new URLSearchParams(location.search).get('reset-crew') === '1') {
@@ -1584,6 +1819,7 @@ async function start() {
       if (['light','dark'].includes(preferences.theme)) appearance.theme = preferences.theme;
       if (['standard','large','larger'].includes(preferences.text)) appearance.text = preferences.text;
       if (Number.isInteger(preferences.volume) && preferences.volume >= 0 && preferences.volume <= 100) appearance.volume = preferences.volume;
+      if (typeof preferences.animateHam === 'boolean') appearance.animateHam = preferences.animateHam;
     }
     applyAppearance();
     const storedStage = localStorage.getItem(missionStageKey);

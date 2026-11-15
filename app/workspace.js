@@ -26,7 +26,7 @@ let trendRange = 7;
 let trendDay = '';
 let recordsFilter = {date:'',env:''};
 let motorDate = '';
-let appearance = {theme:'light',text:'standard',volume:85};
+let appearance = {theme:'light',text:'standard',volume:85,animateHam:true};
 
 const stageGlyphs = {orbit:'◈',earth:'◉',mars:'⤢',transit:'✧',moon:'☾'};
 const stageOptions = selected => Object.entries(stages).map(([key,label]) =>
@@ -171,8 +171,10 @@ function emergencyBanner(withLink = false) {
   const alert = activeEmergency();
   if (!alert) return '';
   const reason = alert.reason || alert.sections?.evidence;
-  return '<section class="emergency-banner" role="alert"><h2>'+UI.icon('alert')+'Contact the crew medical officer now.</h2>'+
-    '<p>Follow your approved mission emergency procedure.</p>'+
+  const onEarth = (alert.env || state.env) === 'earth';
+  return '<section class="emergency-banner" role="alert"><h2>'+UI.icon('alert')+
+    (onEarth ? 'Call local emergency services now.' : 'Contact the crew medical officer now.')+'</h2>'+
+    '<p>'+(onEarth ? 'Follow the steps in the emergency response.' : 'Follow your approved mission emergency procedure.')+'</p>'+
     (reason ? '<p>'+escape(reason)+'</p>' : '')+
     '<div class="actions">'+(withLink ? link('Open emergency guidance','bot','danger') : '')+
     button('Dismiss alert','review-dismiss-alert','compact')+'</div></section>';
@@ -244,20 +246,17 @@ function workspaceHome() {
     .filter(item => item.date && (simulation() || !item.sample)).map(item => item.date).sort();
   const start = profile.missionStartDate || dates[0];
   const days = start && Number.isFinite(Date.parse(start)) ? '<small>'+dayDistance(start)+' '+(profile.missionStartDate ? 'days since mission start' : 'days since first log')+'</small>' : '';
-  const completed = Object.keys(flowLabels).every(key => flow()[key] === 'done');
   const lastActivity = dates.at(-1) || state.createdDate;
   const missing = lastActivity && dayDistance(lastActivity) >= 3;
   const newest = entry || records()[0];
   const recentMood = records().find(item => item.values.moodImpact === 'task' || item.values.moodImpact === 'some');
-  return pageHead('', 'Home', '',flowStep() ? button('Continue routine '+UI.icon('arrow'),'resume-flow','primary') : '')+
+  return pageHead('', 'Home', '')+
     '<section class="identity-banner"><img class="identity-backdrop" alt="" src="'+backdrop+'"><div class="identity">'+portrait(profile.name,validPhoto(crewPortrait),'large')+
     '<div><h2>'+escape(profile.name)+'</h2><p>'+escape(profile.role)+'</p><div class="identity-metrics">'+stageBadge(state.env)+days+'</div></div></div>'+
     '<div class="identity-actions">'+button('Change home photo','backdrop-picker','compact')+button('Change stage','stage-menu','compact')+button(UI.icon('photo')+' '+(dailyPhotos.has(E.dateKey()) ? 'Retake photo' : 'Take photo'),'daily-camera','compact')+'</div></section>'+
     emergencyBanner(true)+
-    card('Daily routine',workflow()+
-      (completed ? '<p class="flow-state done">'+UI.icon('mood')+' Daily routine complete</p>' :
-        missing ? '<p class="flow-state muted">'+UI.icon('sad')+' It has been '+dayDistance(lastActivity)+' days since your last log. Pick a step to get back on track.</p>' :
-        !dates.length ? empty('Start with any step to create your first daily record.') : ''),'','daily-shell')+
+    card('Daily routine',workflow()+hamRoutine()+
+      (missing ? '<p class="flow-state muted">'+UI.icon('sad')+' It has been '+dayDistance(lastActivity)+' days since your last log. Pick a step to get back on track.</p>' : ''),'','daily-shell')+
     '<div class="workspace-grid home-grid">'+
     card('Latest indicators',vitals(null,undefined,true),archerLabel(),'wide')+
     card('Risks and follow-ups',medicalFlags(entry)+(recentMood ? '<p class="state-pill review">'+UI.icon('alert')+' '+escape(E.dutyImpact[recentMood.values.moodImpact])+' · '+formatDay(recentMood.date)+'</p>' : ''),
@@ -266,6 +265,20 @@ function workspaceHome() {
       'Your summary will appear after check-in.'),newest ? '<small>'+formatDay(newest.date)+'</small>' : '')+
     card('Journal',recordedSummary(journal?.summary,'Your latest journal summary will appear here.'),
       link(journal ? 'Open journal' : 'Write entry','journal','compact'),'wide')+'</div>';
+}
+
+function hamRoutine() {
+  const step = flowStep();
+  const urgent = hamUrgent();
+  const message = urgent ? 'Follow the emergency steps in Assistant.' :
+    step ? 'Hi, '+firstName()+'. Your '+flowLabels[step].toLowerCase()+' is next.' : 'Today’s routine is complete.';
+  const actions = {photo:'Take daily photo',check:'Start check-in',motor:'Start motor test',journal:'Open journal'};
+  const next = urgent ? link('Open emergency guidance','bot','danger compact') :
+    step ? button(actions[step],'resume-flow','primary compact') : link('Open records','records','compact');
+  return '<div class="ham-inline ham-routine">'+UI.ham('ham-medium',3,'home')+
+    '<div><strong>Ham</strong><p id="ham-home-copy">'+escape(message)+'</p></div>'+next+'</div>'+
+    (hamTourOwner === session && !urgent ? '<div class="actions ham-tour-offer">'+button('Tour NOMAD','ham-tour','compact','data-step="0"')+
+      button('Skip tour','skip-ham-tour','compact')+'</div>' : '');
 }
 
 function healthView() {
@@ -286,6 +299,14 @@ function summaryAction(area) {
     'data-area="'+area+'"'+(summaryPending || busy ? ' disabled' : ''));
 }
 
+function healthReview(area, fallback, emptyMessage) {
+  const summary = latestSummary(area) || fallback;
+  const waiting = summaryPending === area && !hamUrgent();
+  if (!summary && !waiting) return empty(emptyMessage);
+  return '<div class="ham-inline ham-review">'+UI.ham('ham-medium',3,waiting ? 'pensando' : 'review-'+area)+
+    '<div>'+(waiting ? '<p role="status">Ham is thinking…</p>' : recordedSummary(summary,emptyMessage))+'</div></div>';
+}
+
 const healthChatTurns = area => (state.conversations || []).filter(turn => turn.mode === area && turn.env === state.env).slice(-12);
 
 function healthChat(area) {
@@ -294,8 +315,10 @@ function healthChat(area) {
   const placeholder = mental ? 'Share how you feel or ask for support' : 'Ask about a symptom, reading or physical change';
   return card(mental ? 'Mental health with Ham' : 'Physical health with Ham',
     '<div id="health-chat-log" class="health-transcript" aria-live="polite">'+history.slice(-6).map(turn => messageBubble(turn)).join('')+
-    (busy ? '<p class="muted">Ham is preparing a response…</p>' : '')+'</div>'+
-    '<form id="health-chat-form" class="composer" data-area="'+area+'">'+field('Message',
+    pendingHam(area)+'</div>'+
+    (mental ? '<div class="ham-inline ham-composer">'+UI.ham('ham-small',2,'mental')+'<strong>Ham</strong></div>' : '')+
+    '<form id="health-chat-form" class="composer" data-area="'+area+'">'+
+    field('Message',
       '<textarea name="query" rows="2" maxlength="1000" placeholder="'+placeholder+'" required'+(busy ? ' disabled' : '')+'></textarea>')+
     '<button class="button primary"'+(busy ? ' disabled' : '')+'>Send</button></form>','','wide');
 }
@@ -303,7 +326,7 @@ function healthChat(area) {
 function generalHealth() {
   const entry = today() || records()[0];
   return emergencyBanner(true)+'<div class="workspace-grid">'+
-    card('Health summary',recordedSummary(latestSummary('general') || dashboardCheck(entry),
+    card('Health summary',healthReview('general',dashboardCheck(entry),
       'Complete a check-in to see a summary.'),summaryAction('general'))+
     card('Risks and follow-ups',medicalFlags(entry),'','followup-card')+
     card('Latest measurements',vitals(null,undefined,true),archerLabel(),'wide')+
@@ -392,7 +415,18 @@ function trendView() {
     '" style="--days:'+trendRange+'" aria-label="'+metricNames[trendMetric]+' trend dates">'+graph+'</ol></div></div>'+
     (trendMetric === 'pressure' ? '<p class="micro">Solid line: systolic · Dashed line: diastolic</p>' : '')+
     (snapshot ? '<p class="micro">Demo trends include simulated readings for '+stages[state.env]+'.</p>' : '')+
-    '<p id="trend-detail"></p>';
+    '<p id="trend-detail"></p>'+button('Ask Ham about this trend','ask-ham-trend','compact',busy || summaryPending ? 'disabled' : '');
+}
+
+function composeTrendQuestion() {
+  if (busy || summaryPending) return;
+  const period = trendRange === 1 ? 'today' : 'over the last '+trendRange+' days';
+  assistantTab = 'chat';
+  showRoute('bot');
+  const input = $('chat-form')?.elements.query;
+  if (!input) return;
+  input.value = 'Help me understand my '+metricNames[trendMetric].toLowerCase()+' '+period+'.';
+  input.focus();
 }
 
 const regionKey = ({side,region}) => side+':'+region;
@@ -453,7 +487,7 @@ function bodyHealth() {
     field('What changed','<textarea name="notes" maxlength="600" rows="3" placeholder="When it started or what activity affects it">'+escape(bodyEdit?.notes || '')+'</textarea>')+
     '<div class="actions"><button class="button primary" type="submit" '+(selection.length ? '' : 'disabled')+'>Save symptom</button>'+
     button('Mark as resolved','resolve-body','',selection.length ? '' : 'disabled')+'</div></form>'+history)+
-    card('Physical review',recordedSummary(latestSummary('physical'),'Log a physical change to review it with Ham.'),summaryAction('physical'),'wide')+
+    card('Physical review',healthReview('physical',null,'Log a physical change to review it with Ham.'),summaryAction('physical'),'wide')+
     healthChat('physical')+'</div>';
 }
 function moodReport(item) {
@@ -480,10 +514,10 @@ function mentalHealth() {
     '<button class="button primary" type="submit">Save mood check-in</button></form>'+
     (latestToday?.level <= 2 ? '<div class="mood-support"><p>You reported a low mood today. Ham can help you reflect on what you wrote.</p>'+
       button('Reflect with Ham','generate-summary','compact','data-area="mental"'+(summaryPending || busy ? ' disabled' : ''))+'</div>' : '');
-  return '<div class="workspace-grid">'+card('Mood check-in',moodForm,'','wide')+
+  return '<div class="workspace-grid">'+card('Mood check-in',moodForm,UI.ham('ham-small',2,'mood'),'wide')+
     card('Mood overview',vitals(null,['mood'],true)+
     (duty ? '<p>'+UI.icon('mood')+' '+escape(E.dutyImpact[duty])+'</p>' : '')+
-    (latest ? moodReport(latest) : '')+recordedSummary(latestSummary('mental'),'Review what you’ve shared about your mood and what might help.'),summaryAction('mental'))+
+    (latest ? moodReport(latest) : '')+healthReview('mental',null,'Review what you’ve shared about your mood and what might help.'),summaryAction('mental'))+
     healthChat('mental')+
     card('Recent journals',entries.length ? entries.map(item => '<details class="record-item"><summary>View journal entry · '+formatDay(item.date)+'</summary><p>'+escape(item.text)+'</p></details>').join('') :
       empty('No journal entries in this stage.'),link('Write','journal','compact'))+'</div>';
@@ -525,7 +559,7 @@ function motorHistoryFilter() {
 }
 function skillsHealth() {
   const recent = motorHistory().filter(result => result.env === state.env).sort((a,b) => b.date.localeCompare(a.date))[0];
-  return '<div class="workspace-grid">'+card('Performance summary',recordedSummary(latestSummary('skills'),'Review comparable test results with Ham.'),summaryAction('skills'))+
+  return '<div class="workspace-grid">'+card('Performance summary',healthReview('skills',null,'Review comparable test results with Ham.'),summaryAction('skills'))+
     card('Latest test',recent ? motorSummary(recent) : empty('No results in this stage.'),link('Open motor tests','motor','compact'))+
     card('Test history',motorHistoryFilter(),'','wide')+'</div>';
 }
@@ -541,7 +575,7 @@ function journalView() {
     card('Today’s entry','<p class="muted">What stood out during your shift? How did you feel today?</p><form id="journal-form">'+
       field('Your journal','<textarea name="note" rows="5" maxlength="2400" placeholder="Write about your day…">'+escape((journalDraft?.owner === session ? journalDraft.raw : current?.text) || '')+'</textarea>')+
       '<p id="journal-status" class="micro journal-status" role="status">'+(current ? 'Saved on this device' : 'Saves automatically as you write')+'</p></form>'+
-      '<div id="journal-summary">'+journalSummaryView(current)+'</div>','','journal-card');
+      '<div id="journal-summary">'+journalSummaryView(current)+'</div>',UI.ham('ham-small',2,'journal'),'journal-card');
 }
 
 function journalSummaryView(entry) {
@@ -591,7 +625,9 @@ async function summarizeJournal(journal, owner = session) {
     if (!save({...state,journals:state.journals.map(item => item === journal ? updated : item)})) return;
     if (view() === 'journal' && state.env === journal.env && !journalDraft) updateJournalView(updated);
     if (view() === 'panel') render();
-    if (readAloud && view() === 'journal' && state.env === journal.env && !journalDraft) speakReply({role:'assistant',content:text});
+    if (readAloud && !hamUrgent() && view() === 'journal' && state.env === journal.env && !journalDraft) {
+      speakReply({role:'assistant',content:text,mode:'mental'},$('main').querySelector('[data-ham-presence="journal"]'));
+    }
   } catch {
     if (owner === session && state.journals.includes(journal)) notify('Your journal was saved. Ham’s summary is unavailable.');
   } finally {
@@ -652,7 +688,9 @@ function recordsView() {
       (items.body || []).map(item => '<p><strong>'+regionLabel(item.side,item.region)+' · '+symptoms[item.symptom]+'</strong> '+item.intensity+'/10 '+escape(item.notes)+'</p>').join('')+
       (items.mood || []).map(item => '<h3>Mood check-in</h3>'+moodReport(item)).join('')+
       conversationLog(items.chat || [])+'<div class="actions">'+button('Save daily report','export-day','compact','data-day="'+day+'"')+'</div></details>').join('')+'</div>' :
-      empty('No records match this selection.'));
+      '<section class="card ham-inline">'+UI.ham('ham-small',2,'records')+
+      (recordsFilter.date || recordsFilter.env ? '<p>No records match these filters. Clear the filters to see all records.</p>' :
+        '<div><p>Complete a daily check-in to save your first record.</p>'+button('Start check-in','assist-check','compact')+'</div>')+'</section>');
 }
 
 function documentTarget(source) {
@@ -699,6 +737,14 @@ function openDocument(data) {
   target?.focus({preventScroll:true});
 }
 function documentsView() {
+  const load = button('Load Markdown folder','choose-markdown','primary',missionIndexing ? 'disabled' : '');
+  const picker = '<input id="markdown-files" type="file" webkitdirectory multiple hidden>';
+  if (!library.length) {
+    return pageHead('', 'Documents', '')+picker+
+      card('Local library','<div class="ham-inline">'+UI.ham('ham-medium',3,'pensando')+
+        '<div><p role="status">'+escape(missionImport || 'Choose the mission’s Markdown folder to load your references.')+'</p>'+
+        (libraryError ? '<p class="error">'+escape(libraryError)+'</p>' : '')+load+'</div></div>');
+  }
   const query = documentQuery.toLowerCase().trim();
   const matches = library.filter(item => (item.relative+' '+item.markdown).toLowerCase().includes(query));
   const active = library.find(item => item.id === openedDocument?.id);
@@ -708,12 +754,11 @@ function documentsView() {
     return '<div class="document-row"><div><strong>'+escape(item.title)+'</strong><small>'+escape(snippet)+'</small></div>'+
       button(active === item ? 'Open again' : 'Open','read-markdown','compact','data-id="'+escape(item.id)+'" aria-label="Open '+escape(item.title)+'"')+'</div>';
   }).join('');
-  return pageHead('', 'Documents', '',button('Load Markdown folder','choose-markdown','primary',missionIndexing ? 'disabled' : ''))+
-    '<input id="markdown-files" type="file" webkitdirectory multiple hidden><div class="workspace-grid document-layout">'+
+  return pageHead('', 'Documents', '',load)+picker+'<div class="workspace-grid document-layout">'+
     card('Local library','<form id="document-search" class="search-form">'+field('Search documents','<input name="query" type="search" value="'+escape(documentQuery)+'" placeholder="Title or content">')+
       '<button class="button compact">Search</button></form><p class="muted" role="status">'+escape(missionImport || matches.length+' of '+library.length+' documents')+'</p>'+
       (libraryError ? '<p class="error">'+escape(libraryError)+'</p>' : '')+
-      (results || empty(library.length ? 'No matches.' : 'Load your mission Markdown folder.')))+
+      (results || empty('No matches.')))+
     card(active ? escape(active.title) : 'Reader',active ? '<div id="document-reading" tabindex="-1">'+markdownPreview(active,openedDocument.range)+
       (active.url && /^https:\/\//i.test(active.url) ? '<p><a href="'+escape(active.url)+'">Open original source</a></p>' : '')+'</div>' :
       empty('Choose a document to read.'))+'</div>';
@@ -722,13 +767,19 @@ function settingsView() {
   const status = {unchecked:'Not checked',checking:'Checking…',ready:'Qwen is ready',missing:'Model missing',offline:'Ollama is offline'};
   const choices = (key,options) => '<select aria-label="'+(key === 'theme' ? 'Theme' : 'Text size')+'" data-preference="'+key+'">'+Object.entries(options).map(([value,label]) =>
     '<option value="'+value+'"'+(appearance[key] === value ? ' selected' : '')+'>'+label+'</option>').join('')+'</select>';
+  const connectionHelp = ['offline','missing'].includes(model) ?
+    '<div class="ham-inline ham-connection">'+UI.ham('ham-small',2,'dormido')+
+    '<div><p>Install and open Ollama. In PowerShell, run these commands.</p><pre><code>ollama pull qwen3:4b\nollama list</code></pre>'+
+    '<p>Confirm that <code>qwen3:4b</code> appears, then leave Ollama running and check the connection.</p></div></div>' : '';
   return pageHead('', 'Settings', '')+'<div class="workspace-grid">'+
     card('Appearance','<div class="appearance-controls">'+field('Theme',choices('theme',{light:'Light',dark:'Dark'}))+
-      field('Text size',choices('text',{standard:'Standard',large:'Large',larger:'Extra large'}))+'</div>')+
+      field('Text size',choices('text',{standard:'Standard',large:'Large',larger:'Extra large'}))+'</div>'+
+      '<label class="ham-toggle"><input type="checkbox" data-preference="animateHam"'+(appearance.animateHam ? ' checked' : '')+'> Animate Ham</label>')+
     card('Voice &amp; Audio',field('Volume','<input type="range" min="0" max="100" value="'+appearance.volume+'" data-preference="volume">')+
       '<output id="volume-value">'+appearance.volume+'%</output><div class="actions">'+button('Automatic read-aloud','toggle-speech','','aria-pressed="'+readAloud+'"')+'</div>')+
     card('Profile','<p>'+escape(state.profile.name)+'</p><div class="actions">'+button('Edit profile','profile')+button('Sign out','exit-crew')+'</div>')+
-    card('Local assistant','<p role="status">'+status[model]+'</p>'+button('Check connection','model','',model === 'checking' || busy ? 'disabled' : ''))+'</div>';
+    card('Local assistant','<p role="status">'+status[model]+'</p>'+connectionHelp+button('Check connection','model','','id="check-connection"'+
+      (model === 'checking' || busy ? ' disabled' : '')))+'</div>';
 }
 function applyAppearance() {
   document.documentElement.dataset.theme = appearance.theme;
@@ -737,11 +788,15 @@ function applyAppearance() {
 function saveAppearance(control) {
   const key = control.dataset.preference;
   const valid = {theme:['light','dark'],text:['standard','large','larger']};
-  const value = key === 'volume' ? Math.round(Number(control.value)) : control.value;
-  if (key === 'volume' ? !Number.isFinite(value) || value < 0 || value > 100 : !valid[key]?.includes(value)) return;
+  const value = key === 'animateHam' ? control.checked : key === 'volume' ? Math.round(Number(control.value)) : control.value;
+  if (key === 'volume' ? !Number.isFinite(value) || value < 0 || value > 100 : key !== 'animateHam' && !valid[key]?.includes(value)) return;
   appearance = {...appearance,[key]:value};
   try { localStorage.setItem('netin-appearance-v1',JSON.stringify(appearance)); } catch { notify('Could not save preferences.'); }
   applyAppearance();
+  if (key === 'animateHam') {
+    if (!canAnimateHam()) detachHamVoice();
+    syncHamPresence();
+  }
 }
 
 function setStage(next) {
@@ -815,6 +870,7 @@ async function generateSummary(area) {
   const owner = session;
   summaryPending = area;
   render();
+  let presented;
   try {
     if (missionIndexing && ['physical','general'].includes(area)) await missionIndexing;
     if (owner !== session) return;
@@ -836,10 +892,18 @@ async function generateSummary(area) {
     }
     if (owner !== session) return;
     summary = {...summary,date:E.dateKey(),env:state.env};
-    save({...state,healthSummaries:{...state.healthSummaries,[area]:summary}});
-    if (readAloud && view() === 'health') speakReply({role:'assistant',content:summary.text,sections:summary.sections});
+    if (save({...state,healthSummaries:{...state.healthSummaries,[area]:summary}})) presented = summary;
   } catch { if (owner === session) notify('Ham could not generate the summary. Your records are saved.'); }
-  finally { if (owner === session) { summaryPending = ''; if (view() !== 'journal') render(); } }
+  finally {
+    if (owner === session) {
+      summaryPending = '';
+      if (view() === 'health') {
+        render();
+        const canvas = $('main').querySelector('[data-ham-presence="review-'+area+'"]');
+        if (presented && canvas && !hamUrgent()) presentHam({...presented,role:'assistant',content:presented.text,mode:area},canvas);
+      } else syncHamPresence();
+    }
+  }
 }
 
 function confirmStage(next) {
@@ -917,7 +981,8 @@ function workspaceClick(control) {
     render();
     const selector = action === 'trend-range' ? '[data-range="'+trendRange+'"]' : '[data-action="trend-day"][data-day="'+trendDay+'"]';
     document.querySelector(selector)?.focus({preventScroll:true});
-  } else if (action === 'generate-summary' && Object.hasOwn(healthTabs,area)) void generateSummary(area);
+  } else if (action === 'ask-ham-trend') composeTrendQuestion();
+  else if (action === 'generate-summary' && Object.hasOwn(healthTabs,area)) void generateSummary(area);
   else if (action === 'journal-retry') void summarizeJournal(dailyJournal());
   else if (action === 'next-motor') showRoute('motor');
   else if (action === 'next-journal') showRoute('journal');
@@ -987,10 +1052,11 @@ function completedCheckTurns() {
   return (state.conversations || []).filter(turn => turn.mode === 'check' && !turn.partialCheck && turn.date === date && turn.env === state.env);
 }
 
-function messageBubble(turn, controls = '') {
-  const name = turn.role === 'user' ? 'You' : UI.ham()+' Ham';
+function messageBubble(turn, controls = '', avatar = UI.ham()) {
+  const name = turn.role === 'user' ? 'You' : avatar+' Ham';
   const body = turn.role === 'assistant' ? paragraphReply(turn) : '<p>'+escape(turn.content)+'</p>';
-  return '<article class="message '+turn.role+(turn.urgent ? ' urgent' : '')+'"><div class="speaker">'+name+'</div>'+body+controls+'</article>';
+  return '<article class="message '+turn.role+(turn.urgent ? ' urgent' : '')+'"'+
+    (turn.incidentId ? ' tabindex="-1" data-incident="'+escape(turn.incidentId)+'"' : '')+'><div class="speaker">'+name+'</div>'+body+controls+'</article>';
 }
 
 function assistantView() {
@@ -998,6 +1064,8 @@ function assistantView() {
   const current = isCheck && draft()?.mode === 'chat' ? draft() : null;
   const history = isCheck ? completedCheckTurns() : chat;
   const alert = activeEmergency();
+  const currentAlert = alert?.content && !history.some(turn => turn.urgent &&
+    (turn.incidentId ? turn.incidentId === alert.incidentId : turn.content === alert.content)) ? messageBubble(alert) : '';
   const messages = history.map((turn,index) => messageBubble(turn,
     turn.role === 'assistant' ? button('Listen','speak-reply','voice-button',
       'data-index="'+index+'" data-thread="'+assistantTab+'"') : '')).join('');
@@ -1017,9 +1085,10 @@ function assistantView() {
     (isCheck && history.length && !current && !alert && flow().motor !== 'done' ? button('Continue to motor test','next-motor','compact') : '')+
     button(UI.icon('sound')+' Auto-read','toggle-speech','compact','aria-label="Automatic read-aloud" aria-pressed="'+readAloud+'"')+
     button('Stop audio','stop-speech','compact')+'</div></div><div id="chat-log" class="transcript" aria-live="polite">'+
+    currentAlert+
     (current ? intakeTranscript(current,busy ? null : CI.question(current)) :
       messages || empty(isCheck ? 'Start a new daily check-in with Ham. It will be saved in Records.' : 'Hello, '+firstName()+'. How is your shift going?'))+
-    (busy ? '<p class="muted">Ham is preparing a response…</p>' : '')+'</div>'+
+    pendingHam(assistantTab)+'</div>'+
     (isCheck ? current && !alert ? intakeComposer(CI.question(current)) : '' : '<form id="chat-form" class="composer">'+field('Message',
       '<textarea name="query" rows="2" maxlength="1000" placeholder="Ask Ham a question or share how you are doing" required '+(busy ? 'disabled' : '')+'></textarea>')+
       '<button class="button primary" '+(busy ? 'disabled' : '')+'>Send</button></form>')+'</section>';

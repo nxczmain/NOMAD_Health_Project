@@ -32,7 +32,8 @@ const UI = (() => {
     pin:'M20 10c0 5-8 11-8 11s-8-6-8-11a8 8 0 1 1 16 0z M14 10a2 2 0 1 0-4 0 2 2 0 0 0 4 0z'
   };
   const icon = name => '<svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="'+(paths[name] || paths.transit)+'"/></svg>';
-  const ham = (size = '') => '<canvas class="ham-avatar '+size+'" width="48" height="48" data-escala="2" aria-hidden="true"></canvas>';
+  const ham = (size = '', scale = 2, presence = '') => '<canvas class="ham-avatar '+size+'" width="'+24*scale+'" height="'+24*scale+
+    '" data-escala="'+scale+'"'+(presence ? ' data-ham-presence="'+presence+'"' : '')+' aria-hidden="true"></canvas>';
   const wildlife = {
     panda:{
       palette:{x:'#25313a',w:'#f5eee0',g:'#b9ccbb',n:'#4d6258'},

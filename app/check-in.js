@@ -2,6 +2,7 @@
 
 (function (root) {
   const E = root.AstraEngine;
+  const language = root.HamLanguage;
   const emergencySource = 'https://medlineplus.gov/ency/article/001927.htm';
   const urgentPrompt = 'Before we begin, are you having trouble breathing, chest pain, sudden confusion, fainting, or bleeding that will not stop? Are you worried you might hurt yourself or someone else right now?';
   const yesNo = {yes:'Yes',no:'No',unsure:'Not sure'};
@@ -43,11 +44,10 @@
     impact:'Effect on duties',moodImpact:'Mood and duties notes',statusUpdate:'How you feel now'};
   const freeTextOptions = ['impact','moodImpact'];
   const symptomFields = ['symptoms','onset','impact','symptomDetail','symptomContext'];
-  const normalize = text => text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f’']/g,'');
+  const normalize = language.fold;
 
   function statusUpdate(text) {
-    let wording = normalize(text).replace(/\bstalb\s*eand\b/g,'stable and').replace(/\b(?:stalbe|stabel)\b/g,'stable')
-      .replace(/\bstable and (?=(?:good|fine|well|okay|better)\b)/g,'');
+    let wording = normalize(text).replace(/\bstable and (?=(?:good|fine|well|okay|better)\b)/g,'');
     const correction = /\bi (?:just|already) told you (?:that )?(?:i (?:was|am) feeling|im feeling) ([\w ]+)[.!\s]*$/.exec(wording);
     if (correction && !emergencyKind(text) &&
         !/\b(?:still|sigo|empeor\w*|i (?:feel|have|am) (?:dizzy|sick|in pain|nauseous)|now i have)\b/.test(wording)) {
@@ -66,7 +66,7 @@
   }
 
   function routineResponse(text) {
-    const normalized = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    const normalized = language.interpret(text).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
       .replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
     const denial = /^(?:none(?: at all)?|no(?: new symptoms| symptoms| issues| problems| concerns)?|nothing(?: to report| new)?|all good|i (?:feel|m|am) (?:fine|well|good)|ningun[oa]|no(?: tengo(?: sintomas| molestias))?|nada(?: que reportar)?|sin (?:sintomas|molestias|novedades)|me siento bien|todo bien)(?:\s+|$)/;
     const routine = /^(?:just\s+)?(?:(?:the|a|my)\s+)?(?:(?:normal|routine|regular|daily)\s+)?check\s?in$|^(?:(?:solo|nomas)\s+)?(?:(?:el|un|la|una)\s+)?(?:(?:chequeo|registro|revision)(?:\s+(?:diari[oa]|habitual|normal|de rutina))?|(?:check\s?in)(?:\s+(?:normal|diario|de rutina))?)$/;
@@ -105,7 +105,7 @@
   }
 
   function symptomTopic(current) {
-    const text = (current.answers.symptoms || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    const text = normalize(current.answers.symptoms || '');
     if (/\b(nause\w*|vomit\w*|throw(?:ing)? up|maread[oa]\b.*estomago)/.test(text)) return 'nausea';
     if (/\b(dizz\w*|vertigo|mare\w*|unsteady|balance)\b/.test(text)) return 'dizziness';
     if (/\b(headache|migraine|dolor de cabeza)\b/.test(text)) return 'headache';
@@ -189,7 +189,7 @@
   }
 
   function unresponsiveReport(text) {
-    const folded = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[’']/g,'');
+    const folded = normalize(text);
     if (/\b(?:responding to (?:my |the )?(?:texts?|messages?|emails?)|no responde (?:a mis mensajes|al correo))\b/.test(folded) &&
         !/\b(?:breath\w*|respira\w*|unconscious|inconsciente)\b/.test(folded)) return false;
     if (/\b(?:unresponsive|unconscious|inconsciente)\b/.test(folded) && !/\b(?:not |no esta |never )(?:unresponsive|unconscious|inconsciente)\b/.test(folded)) return true;
@@ -198,46 +198,72 @@
   }
 
   function trainingScenario(text) {
-    return /^(?:in (?:a |this )?(?:simulation|drill|scenario)|(?:this (?:is|is meant to be)|its) (?:a |only a )?(?:simulation|drill|scenario|hypothetical)|hypothetically|what if|what (?:would|should) (?:i|you) do if|how (?:would|should) (?:i|you) respond if|if (?:someone|a person|i)|en (?:una |esta )?simulacion|esto es (?:una )?simulacion|que (?:hago|har[ií]a|pasaria) si)\b/i.test(text.trim().replace(/[’']/g,'')) &&
-      !/\b(?:this is real|not a drill|en verdad|no es un simulacro|actual emergency)\b/i.test(text);
+    const folded = normalize(text).trim();
+    return /^(?:in (?:a |this )?(?:simulation|drill|scenario)|(?:this (?:is|is meant to be)|its) (?:a |only a )?(?:simulation|drill|scenario|hypothetical)|hypothetically|for (?:a |this )?(?:grammar|spelling) (?:example|exercise)|how do (?:i|you) (?:spell|translate|pronounce)|is ["“].{1,180}["”] (?:spelled|grammatically|correct)|what if|what (?:would|should) (?:i|you) do if|how (?:would|should) (?:i|you) respond if|if (?:someone|a person|i)|en (?:una |esta )?simulacion|esto es (?:una )?simulacion|que (?:hago|haria|pasaria) si)\b/.test(folded) &&
+      !/\b(?:this is real|not a drill|en verdad|no es un simulacro|actual emergency|(?:but|pero) (?:i actually|i really|right now|ahora mismo|de verdad))\b/.test(folded);
   }
 
   function bloodCough(text) {
     return /(?<!\bnot )(?<!\bno )\b(?:cough(?:ing|ed|s)? (?:up )?blood|tos(?:e|o|iendo) sangre|escup(?:e|o|iendo) sangre)\b/i.test(text);
   }
 
+  const harmObject = /\b(?:i\s+(?:still\s+|really\s+|do\s+)?(?:want to|wanna|plan to|am going to|m going to|m gonna|might|could|will|m about to|am about to)|(?:im|i am) (?:thinking (?:about|of)|having thoughts of)|restrain(?:ing)? myself from|stop(?:ping)? myself from|cant stop myself from|cannot stop myself from)\s+(?:kill(?:ing)?|hurt(?:ing)?|harm(?:ing)?|cut(?:ting)?|shoot(?:ing)?|stab(?:bing)?|attack(?:ing)?|hit(?:ting)?|punch(?:ing)?)\s+(.+)/;
+  const nonPerson = /^(?:(?:my|your|his|her|their|its|our|the|a|an) )?(?:(?:own )?(?:self[ -](?:esteem|care|control|worth|image|respect|confidence|discipline|defen[cs]e|awareness)|feelings|reputation|pride|career|business|sales|chances|autoestima|ego)|it|time|process|server|job|app|program|lights?|problem|bugs?|two birds|i\b|im\b|we\b|me\b|meant\b|no one|nobody)\b/;
+  const personTarget = /^(?:him|her|them|herself|himself|someone|somebody|anyone|everybody|everyone|people|another person|person|my (?:crew ?mate|friend|partner|colleague|teammate|family|brother|sister|neighbor|crew)|(?:a|the|that|this|our) (?:crew ?mate|friend|partner|colleague|person|team ?mate|neighbor|crew)|(?:a )?(?:mi |mis |un |una |el |la )?(?:companer[oa]s?|tripulantes?|personas?|alguien|otro[sas]?))\b/;
+  const bareTarget = /^[a-z][a-z-]{1,24}(?=\s*(?:$|[,:]|now\b|tonight\b|right now\b|tomorrow\b|when\b|if\b|hoy\b|ahora\b))/;
+
+  function mentalRisk(clause) {
+    const target = harmObject.exec(clause)?.[1];
+    const targets = (target || '').split(/\s*,\s*(?:and\s+)?|\s+(?:and|or|as well as|y|o)\s+/).map(item => item.trim());
+    const self = targets.some(item => /^myself\b(?!-)/.test(item)) ||
+      /\b(?:i (?:still )?(?:want to|wanna|plan to|am going to|m going to|m gonna|might) (?:end my life|die)|i (?:dont|do not) want to (?:live anymore|be alive)|(?:im|i am) (?:thinking (?:about|of)|having thoughts of) (?:suicide|ending my life)|no quiero (?:vivir mas|seguir viviendo)|estoy pensando en (?:hacerme dano|suicidarme))\b/.test(clause) ||
+      /(?<!\bno\s)\b(?:quiero|voy a|pienso|podria|planeo)\s+(?:suicidarme|matarme|lastimarme|herirme|hacerme dano|quitarme la vida|(?:matar|lastimar|herir|hacer dano) a mi mism[oa])\b/.test(clause);
+    const spanishTarget = /(?<!\bno\s)\b(?:quiero|voy a|pienso|podria|planeo)\s+(?:matar|herir|lastimar|atacar|disparar|hacerle dano)\s+(?:a\s+)?(.+)/.exec(clause)?.[1];
+    // A reflexive belongs to the speaker. Another target needs separate words in the message.
+    const other = [...targets,spanishTarget || ''].some(item => item && !/^(?:myself|mi mism[oa])\b/.test(item) &&
+      !nonPerson.test(item) && (personTarget.test(item) || bareTarget.test(item))) ||
+      /(?<!\bno\s)\b(?:quiero|voy a|pienso|podria|planeo)\s+(?:matar[l][oa]s?|herir[l][oa]s?|atacar[l][oa]s?|dispararle)\b|\b(?:me cuesta contenerme|no puedo controlarme|me estoy conteniendo)\b.{0,70}\b(?:matar\w*|herir\w*|atacar\w*|hacerle dano)\b/.test(clause) ||
+      /\bi\s+(?:cant|cannot)\s+(?:promise|guarantee)\s+(?:he|she|they)(?:ll\s+be|\s+will\s+be)\s+safe\s+if\s+i\b/.test(clause);
+    return {self,other};
+  }
+
   function emergencyKind(text) {
-    const folded = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[’']/g,'');
+    const folded = normalize(text);
     if (trainingScenario(folded)) return '';
-    const clauses = folded.split(/[.!?;\n]+|\b(?:but|pero)\b/);
+    const clauses = folded.split(/[.!?;\n]+|\b(?:but|pero|however)\b|\band\s+(?=(?:i|im)\b)/);
+    let self = false;
+    let other = false;
+    let physical = '';
     for (const clause of clauses) {
       if (/^\s*(?:what if|how (?:do|should) i respond if|what should i do if|if (?:someone|a person|i)|que (?:hago|pasaria) si|in (?:a |this )?(?:simulation|scenario)|hypothetically)\b/.test(clause) &&
           !/\b(?:right now|currently|ahora mismo|en este momento)\b/.test(clause)) continue;
-      const selfHarm = /\bi\s+(?:still\s+)?(?:want to|wanna|plan to|am going to|m going to|m gonna|might)\s+(?:kill myself|hurt myself|harm myself|cut myself|end my life|die)\b|(?<!\bno\s)\b(?:quiero|voy a|pienso|podria)\s+(?:suicidarme|matarme|hacerme dano|quitarme la vida)\b/;
-      if (selfHarm.test(clause) || /\b(?:i (?:dont|do not) want to (?:live anymore|be alive)|(?:im|i am) (?:thinking (?:about|of)|having thoughts of) (?:hurting myself|suicide|ending my life)|no quiero (?:vivir mas|seguir viviendo)|estoy pensando en (?:hacerme dano|suicidarme))\b/.test(clause)) return 'self-harm';
-      const englishThreat = /\b(?:i\s+(?:still\s+)?(?:want to|wanna|plan to|am going to|m going to|m gonna|might|could|will|m about to)|restrain(?:ing)? myself from|stop(?:ping)? myself from|cant stop myself from|cannot stop myself from)\s+(?:kill(?:ing)?|hurt(?:ing)?|harm(?:ing)?|shoot(?:ing)?|stab(?:bing)?|attack(?:ing)?)\s+(?!(?:myself|it|time|the (?:process|server|job|app|program|lights?)|a (?:process|job)|two birds)\b)[a-z]/;
-      const spanishThreat = /(?<!\bno\s)\b(?:quiero|voy a|pienso|podria|planeo)\s+(?:matar(?:l[oa]s?)?|herir(?:l[oa]s?)?|atacar(?:l[oa]s?)?|disparar(?:le)?|hacer(?:le)? dano)(?:\s+(?:a\s+)?[a-z]|\b(?<=l[oa])|\s*$)|\b(?:me cuesta contenerme|no puedo controlarme|me estoy conteniendo)\b.{0,70}\b(?:matar\w*|herir\w*|atacar\w*|hacerle dano)\b/;
-      const cannotKeepOthersSafe = /\bi\s+(?:cant|cannot)\s+(?:promise|guarantee)\s+(?:he|she|they)(?:ll\s+be|\s+will\s+be)\s+safe\s+if\s+i\b/;
-      if (englishThreat.test(clause) || spanishThreat.test(clause) || cannotKeepOthersSafe.test(clause)) return 'violence';
-      if (unresponsiveReport(clause)) return 'unresponsive';
+      if (/^\s*(?:(?:yesterday|last week|earlier)\s+i (?:said|thought)|i (?:said|thought) (?:yesterday|last week|earlier)|i (?:never|didnt|did not|am not|m not) (?:say|mean|write|saying)|(?:ayer|la semana pasada) (?:dije|pense)|the (?:phrase|sentence|quote)|grammar example)\b/.test(clause)) continue;
+      const risk = mentalRisk(clause);
+      self ||= risk.self;
+      other ||= risk.other;
+      if (unresponsiveReport(clause)) physical = 'unresponsive';
+      if (physical) continue;
       if (bloodCough(clause) && !/\b(?:what (?:causes|is)|why (?:do|does)|symptoms of|(?:he|she|they) (?:was|were) coughing|stopped coughing|no longer coughing|dejo de toser)\b/.test(clause) &&
-          /(?:^\s*(?:coughing|coughing up|tosiendo)\b|\b(?:my|our|their|the|a)\s+(?:crew ?mate|friend|colleague|partner|person|patient)\b|\b(?:i|im|we|hes|shes|theyre|he|she|they|companer[oa]|tripulante)\b)/.test(clause)) return 'medical';
+          /(?:^\s*(?:coughing|coughing up|tosiendo)\b|\b(?:my|our|their|the|a)\s+(?:crew ?mate|friend|colleague|partner|person|patient)\b|\b(?:i|im|we|hes|shes|theyre|he|she|they|companer[oa]|tripulante)\b)/.test(clause)) physical = 'medical';
       const medical = /\b(?:(?:i|he|she|they|we) (?:cant|cannot|can not) breathe|(?:i|he|she|they) (?:am having|is having|are having|have|has) (?:chest pain|trouble breathing)|(?:i|he|she|they) just (?:fainted|passed out)|(?:my|his|her|their) (?:throat is closing|face is drooping)|(?:the |my |his |her |their )?bleeding (?:wont|will not) stop|no puedo respirar|(?<!\bno\s)(?:tengo (?:dolor (?:en el|de) pecho|dificultad para respirar)|me (?:duele el pecho|acabo de desmayar))|se (?:me |le )?cierra la garganta|(?:la )?hemorragia no para)\b/;
-      if (medical.test(clause) || /\b(?:me falta el aire|my chest hurts|i (?:can barely breathe|am struggling to breathe|m struggling to breathe)|(?:my|our) crew ?mate (?:[a-z]+ )?(?:cant breathe|cannot breathe|collapsed|just fainted))\b/.test(clause)) return 'medical';
-      if (/\b(?:(?:i|he|she|they) (?:just )?(?:overdosed|took an overdose)|(?:i|he|she|they) think (?:i|he|she|they) (?:am|is|are) having (?:a stroke|a heart attack)|(?:acabo de tomar una sobredosis|creo que estoy sufriendo un derrame))\b/.test(clause)) return 'medical';
+      if (medical.test(clause) || /\b(?:me falta el aire|my chest hurts|i (?:can barely breathe|am struggling to breathe|m struggling to breathe)|(?:my|our) crew ?mate (?:[a-z]+ )?(?:cant breathe|cannot breathe|collapsed|just fainted))\b/.test(clause)) physical = 'medical';
+      if (/\b(?:(?:i|he|she|they) (?:just )?(?:overdosed|took an overdose)|(?:i|he|she|they) think (?:i|he|she|they) (?:am|is|are) having (?:a stroke|a heart attack)|(?:acabo de tomar una sobredosis|creo que estoy sufriendo un derrame))\b/.test(clause)) physical = 'medical';
     }
-    return '';
+    return physical || (self && other ? 'self-and-others' : self ? 'self-harm' : other ? 'violence' : '');
   }
 
   function emergencyReply(kind, report = '', env = 'earth') {
     const earth = env === 'earth';
     const action = earth ? 'Call local emergency services now.' :
       'Alert the crew medical officer and activate the onboard emergency procedure now.';
-    if (kind === 'violence' || kind === 'self-harm') {
-      const gettingHelp = earth ? action : 'Alert the crew medical officer or mission control now, and ask another crew member for help.';
-      const distance = kind === 'violence' ? 'Give the other person space. Move away from them and from anything you could use to hurt them, if you can do so safely.' :
+    if (kind === 'violence' || kind === 'self-harm' || kind === 'self-and-others') {
+      const gettingHelp = earth ? action : 'Alert the crew medical officer or mission control now.'+
+        (kind === 'self-harm' ? ' Ask another crew member for help.' : '');
+      const distance = kind === 'self-and-others' ? 'Move away from other people and anything you could use to cause harm, if you can do so safely.' :
+        kind === 'violence' ? 'Give the other person space. Move away from them and from anything you could use to hurt them, if you can do so safely.' :
         'Put distance between yourself and anything you could use to hurt yourself. Ask a trusted person to stay with you.';
-      const danger = kind === 'violence' ? 'Tell responders you are afraid you may hurt someone, and say where you are.' :
+      const danger = kind === 'self-and-others' ? 'Tell responders you might hurt yourself and someone else, and say where you are.' :
+        kind === 'violence' ? 'Tell responders you are afraid you may hurt someone, and say where you are.' :
         'Tell responders you may hurt yourself, and say where you are.';
       const paragraph = '[[serio]] I’m glad you told me. Let’s get help now.\n1. '+
         (kind === 'violence' ? distance+'\n2. '+gettingHelp : gettingHelp+'\n2. '+distance)+'\n3. '+danger;

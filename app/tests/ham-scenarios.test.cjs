@@ -18,7 +18,7 @@ function load(respond) {
       });
     }
   }}});
-  for (const name of ['engine.js','check-in.js','assistant.js','workspace.js']) {
+  for (const name of ['engine.js','ham-language.js','check-in.js','assistant.js','workspace.js']) {
     runInContext(readFileSync(join(__dirname,'..',name),'utf8'),context);
   }
   runInContext(`const E = AstraEngine, CI = NetinCheckIn, AI = AstraAssistant;
@@ -216,4 +216,14 @@ test('20 Mental · a quoted, explicitly denied intention is not an emergency', a
   assert.equal(CI.emergencyKind(report),'');
   assert.equal(await setup.AI.assessSafety(report,[]),'');
   assert.equal(AI.scopeMismatch('mental','My wrist hurts after lifting.'),'physical');
+});
+
+test('a model response cannot reinterpret a negated or figurative phrase as an emergency', async () => {
+  const denied = load(() => ({kind:'self-harm',evidence:'hurt my self'}));
+  assert.equal(await denied.AI.assessSafety("I don't want to hurt my self",[]),'');
+  const figurative = load(() => ({kind:'medical',evidence:'hurt my self-esteem'}));
+  assert.equal(await figurative.AI.assessSafety('I feel like criticism could hurt my self-esteem',[]),'');
+  const other = load(() => ({kind:'violence',evidence:'my self'}));
+  assert.equal(await other.AI.assessSafety('I want to hurt my self',[]),'self-harm');
+  assert.equal(other.calls.length,0);
 });

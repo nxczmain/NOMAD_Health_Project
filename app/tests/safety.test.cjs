@@ -5,7 +5,7 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 
 const context = createContext({});
-for (const name of ['engine.js','check-in.js','assistant.js']) {
+for (const name of ['engine.js','ham-language.js','check-in.js','assistant.js']) {
   runInContext(readFileSync(join(__dirname,'..',name),'utf8'),context);
 }
 const {NetinCheckIn:CI} = context;
@@ -33,6 +33,33 @@ test('routes other kinds of health emergency',() => {
     ['Se me cierra la garganta','medical']
   ];
   for (const [input,expected] of inputs) assert.equal(CI.emergencyKind(input),expected);
+});
+
+test('a misspelled reflexive still identifies the speaker and keeps the original quote',async () => {
+  const AI = context.AstraAssistant;
+  for (const report of ['I want to hurt my self','I want to hutr my slef',"I'm afraid I might harm myslef",
+    'I might hurt msyelf tonight','I’m afraid I might hurt mysel']) {
+    assert.equal(CI.emergencyKind(report),'self-harm',report);
+    assert.equal(await AI.assessSafety(report,[]),'self-harm',report);
+    assert.equal(await AI.emergencyHandoff(report,'self-harm'),report);
+    assert.match(CI.emergencyReply('self-harm',report,'earth').text,/Tell responders you (?:might|may) hurt yourself/);
+  }
+  for (const report of ['I want to hurt my self-esteem','I want to improve my self esteem',
+    "I don't want to hurt my self", 'Earlier I said I want to hurt my self. I am safe now.',
+    'For a spelling exercise, is "I want to hurt my self" correct?',
+    'Is "I want to hurt my self" grammatically correct?',
+    'I am not saying I want to hurt my self.']) {
+    assert.equal(CI.emergencyKind(report),'',report);
+  }
+});
+
+test('distinguishes harm to the speaker, to another person and to both',() => {
+  assert.equal(CI.emergencyKind('I am stopping my self from hutring him'),'violence');
+  assert.equal(CI.emergencyKind('I want to hurt my crewmate'),'violence');
+  assert.equal(CI.emergencyKind('I want to hurt my self and my crewmate'),'self-and-others');
+  assert.equal(CI.emergencyKind('This is a drill. But right now I do want to hurt my self.'),'self-harm');
+  assert.match(CI.emergencyReply('self-and-others','','mars').text,/you might hurt yourself and someone else/);
+  assert.equal(context.AstraAssistant.chatIntent('I feel dizy today',[]).search,'dizziness');
 });
 
 test('stops an intake before asking for readings or parsing a measurement answer',() => {

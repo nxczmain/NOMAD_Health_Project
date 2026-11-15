@@ -29,7 +29,7 @@ if (!(Test-Path -LiteralPath (Join-Path $install.FullName 'NETIN-Portable.flag')
     throw 'La carpeta de destino debe ser una instalacion portable de NETIN.'
 }
 $appFiles = @('NETIN.exe', 'Microsoft.Web.WebView2.Core.dll', 'Microsoft.Web.WebView2.WinForms.dll', 'WebView2Loader.dll')
-$interfaceFiles = @('index.html', 'style.css', 'assistant.js', 'check-in.js', 'crew-camera.js', 'crew-profiles.js', 'engine.js', 'motor.js', 'workspace.js', 'app.js', 'ui.js', 'assets\public-sans.woff2', 'assets\OFL-PublicSans.txt', 'assets\earth-orbit.jpg', 'assets\giant-panda.jpg', 'assets\nomad-logo-light.png', 'assets\nomad-logo-dark.png', 'assets\ham.svg', 'ham-avatar.js', 'ultrasound.js')
+$interfaceFiles = @('index.html', 'style.css', 'assistant.js', 'check-in.js', 'crew-camera.js', 'crew-profiles.js', 'engine.js', 'motor.js', 'workspace.js', 'app.js', 'ui.js', 'assets\public-sans.woff2', 'assets\OFL-PublicSans.txt', 'assets\earth-orbit.jpg', 'assets\giant-panda.jpg', 'assets\nomad-logo-light.png', 'assets\nomad-logo-dark.png', 'assets\ham.svg', 'ham-language.js', 'ham-presence.js', 'ham-avatar.js', 'ultrasound.js')
 $starter = 'interface\starter-library'
 $starterIndex = Join-Path $starter 'index.json'
 $starterManifest = Get-Content -Raw -LiteralPath (Join-Path $app.FullName $starterIndex) | ConvertFrom-Json
