@@ -39,15 +39,19 @@ if ($PSCmdlet.ParameterSetName -eq 'Package') {
 }
 
 New-Item -ItemType Directory -Path $ui -Force | Out-Null
-foreach ($file in @('index.html', 'style.css', 'assistant.js', 'check-in.js', 'crew-camera.js', 'crew-profiles.js', 'engine.js', 'motor.js', 'workspace.js', 'app.js', 'ui.js')) {
+foreach ($file in @('index.html', 'style.css', 'assistant.js', 'check-in.js', 'crew-camera.js', 'crew-profiles.js', 'engine.js', 'motor.js', 'workspace.js', 'app.js', 'ui.js', 'ham-avatar.js', 'ultrasound.js')) {
     Copy-Item -LiteralPath (Join-Path $project $file) -Destination $ui
 }
 $fonts = Join-Path $ui 'assets'
 New-Item -ItemType Directory -Path $fonts -Force | Out-Null
-foreach ($file in @('public-sans.woff2', 'OFL-PublicSans.txt', 'earth-orbit.jpg', 'ham.svg')) {
+foreach ($file in @('public-sans.woff2', 'OFL-PublicSans.txt', 'earth-orbit.jpg', 'giant-panda.jpg', 'nomad-logo-light.png', 'nomad-logo-dark.png', 'ham.svg')) {
     Copy-Item -LiteralPath (Join-Path $project "assets\$file") -Destination $fonts
 }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'README.txt') -Destination $output
+$samples = Join-Path $output 'Ultrasound Samples'
+New-Item -ItemType Directory -Path $samples -Force | Out-Null
+Get-ChildItem -LiteralPath (Join-Path $project 'Ultrasound Samples') -File -Filter '*.png' |
+    Copy-Item -Destination $samples -Force
 
 $references = Join-Path (Split-Path -Parent $project) 'references'
 if (Test-Path -LiteralPath $references -PathType Container) {

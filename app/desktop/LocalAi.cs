@@ -10,9 +10,10 @@ using Microsoft.Web.WebView2.Core;
 internal sealed class LocalAi : IDisposable
 {
     private const string Model = "qwen3:4b";
+    private const string VisionModel = "qwen3-vl:4b";
     private readonly string baseUrl;
     private readonly HttpClient client;
-    private readonly JavaScriptSerializer json = new JavaScriptSerializer { MaxJsonLength = 200000 };
+    private readonly JavaScriptSerializer json = new JavaScriptSerializer { MaxJsonLength = 250000 };
 
     internal LocalAi()
     {
@@ -33,17 +34,18 @@ internal sealed class LocalAi : IDisposable
         string error = null;
         try
         {
-            if (message.Length > 95000) return;
+            if (message.Length > 200000) return;
             var request = json.Deserialize<Dictionary<string, object>>(message);
             id = Convert.ToInt32(request["id"]);
             string operation = request["operation"] as string;
             if (operation == "status") result = await CheckStatusAsync();
-            else if (operation == "chat") result = await ChatAsync((Dictionary<string, object>)request["body"]);
+            else if (operation == "chat") result = await ChatAsync((Dictionary<string, object>)request["body"], Model);
+            else if (operation == "vision") result = await ChatAsync((Dictionary<string, object>)request["body"], VisionModel);
             else error = "Unknown local model operation.";
         }
         catch (HttpRequestException)
         {
-            error = "Ollama is unavailable. Start Ollama and install the qwen3:4b model.";
+            error = "Ollama is unavailable. Open Ollama and try again.";
         }
         catch (TaskCanceledException)
         {
@@ -83,14 +85,14 @@ internal sealed class LocalAi : IDisposable
         }
     }
 
-    private async Task<string> ChatAsync(Dictionary<string, object> body)
+    private async Task<string> ChatAsync(Dictionary<string, object> body, string expectedModel)
     {
-        if ((body["model"] as string) != Model) throw new InvalidOperationException("This model is not available in NETIN.");
+        if ((body["model"] as string) != expectedModel) throw new InvalidOperationException("This model is not available in NOMAD.");
         using (var content = new StringContent(json.Serialize(body), Encoding.UTF8, "application/json"))
         using (HttpResponseMessage response = await client.PostAsync(baseUrl + "/api/chat", content))
         {
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
-                throw new InvalidOperationException("Install the local model with: ollama pull qwen3:4b");
+                throw new InvalidOperationException("Install the local model with: ollama pull " + expectedModel);
             response.EnsureSuccessStatusCode();
             var payload = json.Deserialize<Dictionary<string, object>>(await response.Content.ReadAsStringAsync());
             var reply = (Dictionary<string, object>)payload["message"];

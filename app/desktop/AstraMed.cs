@@ -10,7 +10,7 @@ using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
-[assembly: AssemblyTitle("NETIN")]
+[assembly: AssemblyTitle("NOMAD")]
 [assembly: AssemblyDescription("Astronaut health workstation")]
 [assembly: AssemblyVersion("3.1.1.0")]
 
@@ -27,7 +27,7 @@ internal static class Program
         {
             if (!firstInstance)
             {
-                MessageBox.Show("The crew workstation is already open.", "NETIN",
+                MessageBox.Show("The crew workstation is already open.", "NOMAD",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
@@ -38,8 +38,8 @@ internal static class Program
             }
             catch (Exception error)
             {
-                MessageBox.Show("Could not open NETIN. Extract the full ZIP into one folder.\n\n"
-                    + error.Message, "NETIN", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Could not open NOMAD. Extract the full ZIP into one folder.\n\n"
+                    + error.Message, "NOMAD", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }
@@ -60,7 +60,7 @@ internal sealed class MissionWindow : Form
     internal MissionWindow(bool resetCrew)
     {
         this.resetCrew = resetCrew;
-        Text = "NETIN";
+        Text = "NOMAD";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(520, 530);
         ClientSize = new Size(1200, 810);
@@ -72,7 +72,7 @@ internal sealed class MissionWindow : Form
         status = new Label
         {
             Dock = DockStyle.Fill,
-            Text = "Opening NETIN…",
+            Text = "Opening NOMAD…",
             TextAlign = ContentAlignment.MiddleCenter,
             Padding = new Padding(24),
             ForeColor = Color.FromArgb(37, 33, 29),
@@ -149,19 +149,19 @@ internal sealed class MissionWindow : Form
             {
                 if (args.ProcessFailedKind == CoreWebView2ProcessFailedKind.BrowserProcessExited ||
                     args.ProcessFailedKind == CoreWebView2ProcessFailedKind.RenderProcessExited)
-                    ShowStatus("The workstation closed unexpectedly. Restart NETIN.");
+                    ShowStatus("The workstation closed unexpectedly. Restart NOMAD.");
             };
             core.Navigate(resetCrew ? StartPage + "?reset-crew=1" : StartPage);
         }
         catch (WebView2RuntimeNotFoundException)
         {
             if (!IsDisposed)
-                ShowStatus("NETIN needs Microsoft Edge WebView2 Runtime on this computer.");
+                ShowStatus("NOMAD needs Microsoft Edge WebView2 Runtime on this computer.");
         }
         catch (Exception error)
         {
             if (!IsDisposed)
-                ShowStatus("Could not start NETIN.\n\n" + error.GetBaseException().Message);
+                ShowStatus("Could not start NOMAD.\n\n" + error.GetBaseException().Message);
         }
     }
 
@@ -191,7 +191,7 @@ internal sealed class MissionWindow : Form
         }
         catch (Exception)
         {
-            MessageBox.Show(this, "Could not open the link in your browser.", "NETIN",
+            MessageBox.Show(this, "Could not open the link in your browser.", "NOMAD",
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
@@ -221,11 +221,16 @@ internal sealed class MissionWindow : Form
                     break;
                 }
                 speech.SetOutputToDefaultAudioDevice();
+                speech.SpeakStarted += (sender, args) => ReportSpeechEvent(args.Prompt,"start",0);
+                speech.SpeakProgress += (sender, args) => ReportSpeechEvent(args.Prompt,"boundary",args.CharacterPosition);
                 speech.SpeakCompleted += (sender, args) =>
                 {
-                    if (args.Error == null) return;
-                    try { BeginInvoke((Action)(() => { if (args.Prompt == activeSpeech) ReportSpeechError(speechRequest); })); }
-                    catch (InvalidOperationException) { }
+                    if (args.Error == null) ReportSpeechEvent(args.Prompt,"end",0);
+                    else
+                    {
+                        try { BeginInvoke((Action)(() => { if (args.Prompt == activeSpeech) ReportSpeechError(speechRequest); })); }
+                        catch (InvalidOperationException) { }
+                    }
                 };
             }
             speech.SpeakAsyncCancelAll();
@@ -240,6 +245,21 @@ internal sealed class MissionWindow : Form
             activeSpeech = null;
             ReportSpeechError(id);
         }
+    }
+
+    private void ReportSpeechEvent(Prompt prompt, string kind, int position)
+    {
+        try
+        {
+            BeginInvoke((Action)(() =>
+            {
+                if (prompt != activeSpeech || view.CoreWebView2 == null) return;
+                view.CoreWebView2.PostWebMessageAsJson("{\"channel\":\"nomad-voice-event\",\"event\":\"" + kind +
+                    "\",\"id\":" + speechRequest + ",\"position\":" + position + "}");
+                if (kind == "end") activeSpeech = null;
+            }));
+        }
+        catch (InvalidOperationException) { }
     }
 
     private void ReportSpeechError(int id)
@@ -297,7 +317,7 @@ internal sealed class MissionWindow : Form
         string filename = message.Substring(0, separator);
         string content = message.Substring(separator + 1);
         bool isReport = System.Text.RegularExpressions.Regex.IsMatch(filename,
-            @"^netin-(medical|weekly|30-day)-\d{4}-\d{2}-\d{2}\.html$");
+            @"^(?:nomad|netin)-(medical|weekly|30-day)-\d{4}-\d{2}-\d{2}\.html$");
         bool isImage = filename == "netin-attachment.jpg";
         if (!isReport && !isImage) return;
 
@@ -310,7 +330,7 @@ internal sealed class MissionWindow : Form
         {
             using (var dialog = new SaveFileDialog
             {
-                Title = isReport ? "Save NETIN report" : "Save attachment",
+                Title = isReport ? "Save NOMAD report" : "Save attachment",
                 FileName = filename,
                 DefaultExt = isReport ? "html" : "jpg",
                 Filter = isReport ? "HTML report (*.html)|*.html" : "JPEG image (*.jpg)|*.jpg",
@@ -324,7 +344,7 @@ internal sealed class MissionWindow : Form
         }
         catch (Exception error)
         {
-            MessageBox.Show(this, "Could not save the file.\n\n" + error.Message, "NETIN",
+            MessageBox.Show(this, "Could not save the file.\n\n" + error.Message, "NOMAD",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }

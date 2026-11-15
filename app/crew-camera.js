@@ -70,7 +70,7 @@ const CrewCamera = (() => {
   }
 
   async function capture(video, signal, ready, countdown) {
-    if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera access is unavailable. Open NETIN.exe to use the camera.');
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera access is unavailable. Open the NOMAD desktop app to use the camera.');
     const camera = navigator.mediaDevices.getUserMedia({
       video: {facingMode: {ideal: 'user'}, width: {ideal: 720}, height: {ideal: 720}},
       audio: false

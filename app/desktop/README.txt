@@ -1,9 +1,11 @@
-NETIN for Windows x64
+NOMAD for Windows x64
 
-Open NETIN.exe from this folder. Keep the interface and WebView2 DLLs beside it.
+Open NETIN.exe from this folder to start NOMAD. Keep the interface and WebView2 DLLs beside it.
 Microsoft Edge WebView2 Runtime and .NET Framework 4.8 are required.
 For AI responses, install Ollama for Windows, open Ollama, and run
 ollama pull qwen3:4b
+For the simulated ultrasound workspace, run ollama pull qwen3-vl:4b.
+The Ultrasound Samples folder includes synthetic training images.
 
 See INSTALLATION.md for the complete judges' walkthrough. The Windows ZIP
 includes a starter library that opens in Documents on a fresh installation.

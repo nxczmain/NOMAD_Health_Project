@@ -6,9 +6,9 @@ const NetinMotor = (() => {
   const inputs = {mouse:'Mouse / trackpad',touch:'Touchscreen',pen:'Pen'};
   const hands = {left:'Left hand',right:'Right hand'};
   const games = {
-    dock:{name:'Docking drill',description:'React to five signals, then hit eight lit targets.',metrics:[['reaction','Reaction time','ms'],['aiming','Target time','ms'],['accuracy','Target accuracy','%']]},
-    cargo:{name:'Cargo transfer',description:'Drag four cargo tokens to the highlighted bays. Keep the pointer held until you reach the bay.',metrics:[['movement','Transfer time','ms'],['accuracy','Drop accuracy','%']]},
-    taps:{name:'Thruster taps',description:'With one hand, tap the left and right panels in turn. Complete 16 correct taps.',metrics:[['cadence','Time between taps','ms'],['accuracy','Tap accuracy','%']]}
+    dock:{name:'Docking drill',description:'Tap the panda when it appears. After five signals, follow it across eight targets.',metrics:[['reaction','Reaction time','ms'],['aiming','Target time','ms'],['accuracy','Target accuracy','%']]},
+    cargo:{name:'Cargo transfer',description:'Guide four turtles to the highlighted ponds. Keep the pointer held until you reach each pond.',metrics:[['movement','Transfer time','ms'],['accuracy','Drop accuracy','%']]},
+    taps:{name:'Thruster taps',description:'Use one hand to follow the fox across the left and right panels. Complete 16 alternating taps.',metrics:[['cadence','Time between taps','ms'],['accuracy','Tap accuracy','%']]}
   };
   const gameOf = result => result.game || 'dock';
   const goals = {dock:targetPath.length,cargo:4,taps:16};
@@ -24,7 +24,7 @@ const NetinMotor = (() => {
   function baseline(result, history) {
     const days = history.filter(day => day.date < result.date && day.env === result.env &&
       day.input === result.input && day.hand === result.hand && day.layout === result.layout &&
-      gameOf(day) === gameOf(result) && day.sample === result.sample && (day.cue || 'visual') === (result.cue || 'visual')).sort((a,b) => b.date.localeCompare(a.date)).slice(0,7);
+      gameOf(day) === gameOf(result) && day.sample === result.sample && (day.cue || 'visual') === (result.cue || 'visual') && (day.scene || 'classic') === (result.scene || 'classic')).sort((a,b) => b.date.localeCompare(a.date)).slice(0,7);
     if (days.length < 3) return null;
     return {count:days.length,...Object.fromEntries(games[gameOf(result)].metrics.map(([key]) =>
       [key,median(days.map(day => value(day,key)))]))};
@@ -130,7 +130,7 @@ const NetinMotor = (() => {
       phase = 'waiting';
       cue?.classList.remove('active');
       status.textContent = 'Signal '+(reactionTimes.length + 1)+' of '+reactionTrials+' · Wait for the center beacon. Early taps: '+early+'.';
-      timer = setTimeout(() => light(center,'Signal '+(reactionTimes.length + 1)+' of '+reactionTrials+' · Tap the center beacon! Early taps: '+early+'.','reaction'),
+      timer = setTimeout(() => light(center,'Signal '+(reactionTimes.length + 1)+' of '+reactionTrials+' · Tap the panda! Early taps: '+early+'.','reaction'),
         900 + Math.random() * 1500);
     }
 
@@ -194,6 +194,7 @@ const NetinMotor = (() => {
     const cells = [...board.children];
     const token = document.createElement('span');
     token.className = 'motor-cargo-token';
+    token.innerHTML = UI.animal('turtle');
     token.hidden = true;
     board.append(token);
     const lanes = [[5,9],[13,1],[0,14],[8,6]];
@@ -207,7 +208,7 @@ const NetinMotor = (() => {
       const [from,to] = lanes[times.length].map(index => cells[index]);
       from.classList.add('cargo-source');
       to.classList.add('cargo-destination');
-      status.textContent = 'Crate '+(times.length + 1)+' of '+goals.cargo+' · Drag the square to the outlined bay.';
+      status.textContent = 'Turtle '+(times.length + 1)+' of '+goals.cargo+' · Drag it to the outlined pond.';
     }
     function cancel() {
       controller.abort();
@@ -235,9 +236,9 @@ const NetinMotor = (() => {
       drag = undefined;
       token.hidden = true;
       const destination = cells[lanes[times.length][1]];
-      if (document.elementFromPoint(event.clientX,event.clientY) !== destination) {
+      if (document.elementFromPoint(event.clientX,event.clientY)?.closest('.motor-bay') !== destination) {
         misses++;
-        status.textContent = 'Missed the bay · Pick up the same crate and try again.';
+        status.textContent = 'Missed the pond · Guide the same turtle and try again.';
         return;
       }
       times.push(elapsed);

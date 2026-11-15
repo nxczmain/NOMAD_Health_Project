@@ -32,6 +32,24 @@ const UI = (() => {
     pin:'M20 10c0 5-8 11-8 11s-8-6-8-11a8 8 0 1 1 16 0z M14 10a2 2 0 1 0-4 0 2 2 0 0 0 4 0z'
   };
   const icon = name => '<svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="'+(paths[name] || paths.transit)+'"/></svg>';
-  const ham = (size = '') => '<img class="ham-avatar '+size+'" alt="" src="assets/ham.svg">';
-  return {icon,ham};
+  const ham = (size = '') => '<canvas class="ham-avatar '+size+'" width="48" height="48" data-escala="2" aria-hidden="true"></canvas>';
+  const wildlife = {
+    panda:{
+      palette:{x:'#25313a',w:'#f5eee0',g:'#b9ccbb',n:'#4d6258'},
+      pixels:['.xx.....xx..','xxxx...xxxx.','.xwwwwwwwx..','.wwwwwwwww..','.wxxwwwxxw..','.wxxwwwxxw..','.wwwwxwwww..','..wwnnnww...','...wwwww....','...xwwwx....','..xxgwgxx...','..xx...xx...']
+    },
+    turtle:{
+      palette:{x:'#315849',g:'#6f9d57',b:'#d9b665',n:'#284334',w:'#eef0c4'},
+      pixels:['............','....xxxx....','...xbbbxx...','..xbgxbgxx..','..xbgbgbxgg.','..xgbgbgxgn.','g.xbbgbbxgg.','ggxxbbxxgg..','.ggxxxxgg...','..gg..gg....','..xx..xx....','............']
+    },
+    fox:{
+      palette:{x:'#573a35',r:'#d77a4a',w:'#fff0cf',n:'#30353f',p:'#fcb585'},
+      pixels:['.x.......x..','.rx.....xr..','.rpx...xpr..','.rrrrrrrrr..','.rrrrrrrrr..','..rnrrrnr...','..wwrrrww...','...wwnww....','....www.....','...rxwxr....','...r..rr....','......ww....']
+    }
+  };
+  const wildlifePaths = Object.fromEntries(Object.entries(wildlife).map(([name,{palette,pixels}]) => [name,
+    Object.entries(palette).map(([part,color]) => '<path fill="'+color+'" d="'+pixels.flatMap((row,y) =>
+      Array.from(row,(pixel,x) => pixel === part ? 'M'+x+' '+y+'h1v1h-1z' : '')).join('')+'"/>').join('')]));
+  const animal = name => '<svg class="game-animal" viewBox="0 0 12 12" shape-rendering="crispEdges" aria-hidden="true">'+wildlifePaths[name]+'</svg>';
+  return {icon,ham,animal};
 })();

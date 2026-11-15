@@ -103,8 +103,15 @@ function save(next) {
     return false;
   }
 }
+const intakeTurns = (entry, partialCheck = false) => entry.turns.map(turn =>
+  ({...turn,mode:'check',date:entry.date,env:entry.env,partialCheck}));
+const freeChatTurns = () => (state.conversations || []).filter(turn =>
+  turn.mode !== 'check' && (turn.thread || '') === (state.chatThread || '')).slice(-80);
 function setDraft(next) {
-  return save({...state,drafts:{...state.drafts,[state.env]:next}});
+  const previous = state.drafts[state.env];
+  const archive = previous?.mode === 'chat' && previous.date !== next.date ? intakeTurns(previous,true) : [];
+  return save({...state,drafts:{...state.drafts,[state.env]:next},
+    conversations:archive.length ? [...(state.conversations || []),...archive] : state.conversations});
 }
 function pageHead(label, title, text, action = '') {
   return '<header class="page-head"><div><h1>'+title+'</h1>'+(text ? '<p class="muted">'+text+'</p>' : '')+'</div>'+action+'</header>';
@@ -113,6 +120,7 @@ function field(label, control) {
   return '<label class="field"><span>'+label+'</span>'+control+'</label>';
 }
 function home() {
+  const logo = appearance.theme === 'dark' ? 'nomad-logo-dark.png' : 'nomad-logo-light.png';
   const cards = crewKeys.map(key => {
     try {
       const {profile} = readCrew(key);
@@ -124,11 +132,11 @@ function home() {
       return '<p class="notice">Could not read a local profile.</p>';
     }
   }).join('');
-  return '<section class="crew-home"><div class="crew-picker"><h1>Welcome to NETIN</h1><p class="muted">Choose the mission stage, then sign in to your crew profile.</p>'+
+  return '<section class="crew-home"><div class="crew-picker"><h1>Welcome to NOMAD</h1><p class="muted">Choose the mission stage, then sign in to your crew profile.</p>'+
     stageField('mission-stage',stageChoice)+
     (rosterReset ? '<p class="notice" role="status">Profiles reset. Each demo astronaut has 30 days of records.</p>' : '')+
     '<div class="crew-options">'+cards+'</div>'+button('Create profile','new-profile','primary')+'</div>'+
-    '<figure class="earth-window"><figcaption><strong>Earth at sunrise</strong><a href="https://science.nasa.gov/earth/earth-observatory/sunrise-from-the-station-152259/">Photograph from the ISS · NASA</a></figcaption></figure></section>';
+    '<figure class="nomad-cover"><img src="assets/'+logo+'" width="1536" height="1024" alt="NOMAD logo with Earth, a heartbeat and an orbiting rocket"></figure></section>';
 }
 
 function cameraView() {
@@ -226,7 +234,7 @@ async function submitLogin(form) {
     $('modal').close();
     state = crew;
     session = {key};
-    chat = (state.conversations || []).slice(-80);
+    chat = freeChatTurns();
     const owner = session;
     await readCrewPhotos();
     if (owner !== session) return;
@@ -247,8 +255,13 @@ function exitCrew() {
   dailyPhotos = new Map();
   crewPortrait = undefined;
   chat = [];
+  assistantTab = 'chat';
+  liveVitals = undefined;
+  moodDraft = undefined;
   chatMode = 'companion';
   healthTab = 'general';
+  physicalTab = 'body';
+  Ultrasound.reset();
   bodySide = 'front';
   bodySelection.clear();
   bodyEdit = undefined;
@@ -270,19 +283,93 @@ function exitCrew() {
   showRoute('home');
 }
 
+let hamPlayer;
+let hamCanvases = [];
+let hamUtterance;
+let hamSpeechText = '';
+
+function attachHam(selected, restore = false) {
+  if (!globalThis.HamAvatar) return;
+  const header = $('main').querySelector('.assistant-head canvas.ham-avatar');
+  const message = selected || $('chat-log')?.querySelector('.message.assistant:last-of-type canvas.ham-avatar');
+  try {
+    hamPlayer ||= HamAvatar.crear(null,{volverNeutralMs:0});
+    for (const item of hamCanvases) hamPlayer.quitarLienzo(item);
+    hamCanvases = [];
+    if (restore) {
+      for (const item of $('main').querySelectorAll('canvas.ham-avatar')) {
+        if (item.getContext('2d')) HamAvatar.dibujarEstatico(item,'neutral',Number(item.dataset.escala));
+      }
+      if (!hamSpeechText) return;
+    }
+    for (const item of [header,message]) {
+      if (item?.getContext('2d')) {
+        hamPlayer.agregarLienzo(item,Number(item.dataset.escala));
+        hamCanvases.push(item);
+      }
+    }
+  } catch { /* CSS shows the original sprite on unsupported canvases. */ }
+}
+
+function resetHam() {
+  hamUtterance = undefined;
+  hamSpeechText = '';
+  hamPlayer?.detener();
+  hamPlayer?.expresion('neutral');
+}
+
 function stopSpeech() {
   voiceRequest++;
   voiceText = '';
+  resetHam();
   globalThis.speechSynthesis?.cancel();
   globalThis.chrome?.webview?.postMessage('netin-stop-speech');
 }
 
-function speakReply(turn) {
+function animateHam(turn, canvas, audio = false) {
   if (turn?.role !== 'assistant' || !turn.content) return;
   stopSpeech();
-  const text = turn.paragraph || (turn.sections ? summaryParagraph(turn) : turn.content);
-  voiceText = text.replace(/\[\d+\]/g,'').replace(/ +([.,])/g,'$1');
-  globalThis.chrome?.webview?.postMessage('netin-speak\n'+voiceRequest+'\n'+appearance.volume+'\n'+voiceText);
+  const text = (turn.paragraph || (turn.sections ? summaryParagraph(turn) : turn.content)).replace(/\[\d+\]/g,'').replace(/ +([.,])/g,'$1').trim();
+  const clean = AI.clearTags(text);
+  if (!clean) return;
+  hamSpeechText = text;
+  attachHam(canvas);
+  if (!audio) {
+    if (hamCanvases.length) void hamPlayer.decir(text,{duracionMs:Math.max(800,clean.length * 46)}).then(() => {
+      if (hamSpeechText === text) hamSpeechText = '';
+    });
+    else hamSpeechText = '';
+    return;
+  }
+  voiceText = clean;
+  if (!globalThis.chrome?.webview) return browserSpeech(voiceRequest);
+  hamUtterance = new EventTarget();
+  if (hamCanvases.length) void hamPlayer.decir(text,{utterance:hamUtterance});
+  globalThis.chrome.webview.postMessage('netin-speak\n'+voiceRequest+'\n'+appearance.volume+'\n'+voiceText);
+}
+
+function speakReply(turn, canvas) {
+  animateHam(turn,canvas,true);
+}
+
+function presentHam(turn) {
+  animateHam(turn,undefined,readAloud);
+}
+
+function browserSpeech(id) {
+  const voices = globalThis.speechSynthesis?.getVoices().filter(voice => voice.localService) || [];
+  const voice = voices.find(item => /^en(?:[-_]|$)/i.test(item.lang)) || voices[0];
+  if (!voice) {
+    if (hamCanvases.length) void hamPlayer.decir(hamSpeechText);
+    return notify('Windows could not play this reply. Check the installed voices and sound output.');
+  }
+  const reply = new SpeechSynthesisUtterance(voiceText);
+  reply.voice = voice;
+  reply.volume = appearance.volume / 100;
+  if (hamCanvases.length) void hamPlayer.decir(hamSpeechText,{utterance:reply});
+  reply.onend = () => { if (id === voiceRequest) { hamSpeechText = ''; voiceText = ''; } };
+  reply.onerror = () => { if (id === voiceRequest) { resetHam(); notify('Windows could not play this reply.'); } };
+  speechSynthesis.speak(reply);
 }
 
 async function readCrewPhotos() {
@@ -456,7 +543,7 @@ function localReview(mode, limitation = '') {
   const flagged = entries.filter(entry => ['review','urgent'].includes(E.evaluate(entry,state.profile).attention)).length;
   return AI.summary({immediateActions:entries.some(entry => E.dateKey() === entry.date && E.evaluate(entry,state.profile).attention === 'urgent') ?
     E.medicalHelp : 'Record any new symptoms or changes.',
-    evidence:(simulation() ? 'The simulated log' : 'Your log')+' has '+entries.length+' check-ins. NETIN marked '+flagged+' for review.',
+    evidence:(simulation() ? 'The simulated log' : 'Your log')+' has '+entries.length+' check-ins. NOMAD marked '+flagged+' for review.',
     whyItMatters:limitation || 'The weekly log shows which readings and observations warrant a closer look.',
     recommendations:flagged ? 'Bring the flagged readings and observations to the crew medical officer.' : 'Continue recording measurements and observations.'});
 }
@@ -486,6 +573,18 @@ function emergencyAnswer(kind, report = '') {
     const paragraph = 'I’m taking this seriously. '+distance+gettingHelp+' '+danger;
     return {text:paragraph,paragraph,urgent:true,
       sources:[{ref:1,title:'NHS · Urgent help for a mental health emergency',url:'https://www.nhs.uk/nhs-services/mental-health-services/where-to-get-urgent-help-for-mental-health/'}]};
+  }
+  if (kind === 'medical' && CI.bloodCough(report)) {
+    const document = library.find(item => item.title === 'First aid for an injured crewmate');
+    const paragraph = '[[serio]] 1. '+action+
+      '\n2. Say the person is coughing up blood. Tell responders where you are, how much blood you can see, and whether breathing or alertness has changed.'+
+      '\n3. Stay with them if it is safe, keep watching their breathing and responsiveness, and follow the responders’ instructions.'+
+      (/\bbleeding\b/i.test(report) ? '\n4. If there is also a separate severe external wound, use firm direct pressure with a dressing if you are trained and it is safe.' : '');
+    return {text:paragraph,paragraph,urgent:true,sources:[
+      {ref:1,title:'NHS · Coughing up blood',url:'https://www.nhs.uk/symptoms/coughing-up-blood/'},
+      {ref:2,title:'American Red Cross · Severe internal bleeding',url:'https://www.redcross.org/take-a-class/resources/learn-first-aid/bleeding-life-threatening-internal'},
+      ...(document ? [{ref:3,id:document.id,title:document.title,start:0,end:document.markdown.length}] : [])
+    ]};
   }
   if (kind !== 'unresponsive') {
     const paragraph = action+' Tell responders exactly what is happening, where you are, and when it started. Follow their directions.';
@@ -527,45 +626,51 @@ function intakeSummary(entry, urgent) {
 
 function intakeTranscript(current, prompt) {
   const turns = [...current.turns,...(prompt ? [{role:'assistant',content:prompt.prompt}] : [])];
-  return turns.map(turn => '<article class="message '+turn.role+'"><div class="speaker">'+(turn.role === 'user' ? 'You' : UI.ham()+' Ham')+'</div><p>'+escape(turn.content)+'</p></article>').join('');
+  return turns.map(turn => messageBubble(turn)).join('');
 }
 
 function intakeComposer(prompt) {
   if (!prompt) return '<div class="actions">'+button('Save check-in','finish-chat-check','primary',busy ? 'disabled' : '')+'</div>';
   const disabled = busy ? ' disabled' : '';
   const existing = (draft().values[prompt.key] != null ? E.format(draft().values[prompt.key]) : '');
-  const answer = prompt.options ? '<div class="actions intake-options">'+Object.entries(prompt.options).map(([key,label]) =>
-    button(label,'intake-option','','data-answer="'+key+'"'+disabled)).join('')+'</div>' :
+  const options = prompt.options ? '<div class="actions intake-options">'+Object.entries(prompt.options).map(([key,label]) =>
+    button(label,'intake-option','','data-answer="'+key+'"'+disabled)).join('')+'</div>' : '';
+  const acceptsText = !prompt.options || prompt.freeText;
+  const answer = acceptsText ?
     field(prompt.metric ? metricNames[prompt.metric.key]+' ('+prompt.metric.unit+')' : 'Your answer',prompt.metric ? '<input name="answer" inputmode="'+(prompt.metric.key === 'pressure' ? 'text' : 'decimal')+'" autocomplete="off" maxlength="60" value="'+escape(existing)+'"'+disabled+'>' :
-      '<textarea name="answer" rows="2" maxlength="'+(prompt.key === 'note' ? 1500 : 700)+'"'+disabled+'>'+escape(existing)+'</textarea>');
+      '<textarea name="answer" rows="2" maxlength="'+(prompt.key === 'note' ? 1500 : 700)+'"'+disabled+'>'+escape(prompt.options ? '' : existing)+'</textarea>') : '';
   const measure = prompt.metric ? '<div class="measure-question">'+UI.icon(prompt.metric.key)+'<strong>'+metricNames[prompt.metric.key]+'</strong></div>' : '';
-  return '<form id="intake-form" class="intake-form intake-card">'+measure+answer+(prompt.key === 'note' ?
+  return '<form id="intake-form" class="intake-form intake-card">'+measure+options+answer+(prompt.key === 'note' ?
     field('Photo (optional)','<input name="image" type="file" accept="image/jpeg,image/png,image/webp"'+disabled+'>')+preview(draft().image) : '')+
-    '<div class="actions">'+(prompt.options ? '' : '<button class="button primary"'+disabled+'>Send</button>')+
+    '<div class="actions">'+(acceptsText ? '<button class="button primary"'+disabled+'>Send</button>' : '')+
     (prompt.key === 'symptoms' ? button('Nothing to report','intake-option','','data-answer="none"'+disabled) : '')+
     (prompt.optional ? button('Skip','skip-intake','',disabled) : '')+'</div><p class="error" role="alert"></p></form>';
 }
 
 function speakIntake() {
-  const prompt = CI.question(draft());
-  if (prompt && readAloud && view() === 'bot') speakReply({role:'assistant',content:prompt.prompt});
+  const current = draft();
+  const prompt = current?.mode === 'chat' ? CI.question(current) : null;
+  if (prompt && view() === 'bot' && assistantTab === 'check') presentHam({role:'assistant',content:prompt.prompt});
 }
 
 async function prepareIntakeQuestion(current, openAssistant = false) {
   const available = CI.questions(current);
   const activeSession = session;
-  const needsModel = available.length && !current.next && available[0].key !== 'urgent' && !['offline','missing'].includes(model);
+  const needsModel = available.length && !current.next && !['urgent','symptoms'].includes(available[0].key) && !['offline','missing'].includes(model);
   if (needsModel) busy = true;
   if (openAssistant) showRoute('bot');
   else if (needsModel && view() === 'bot') render();
   if (!available.length) return finishIntake();
   if (needsModel) {
-    const question = await AI.checkInQuestion(available,current,environment().name,library).catch(() => null);
+    const planned = await AI.checkInQuestion(available,current,environment().name).catch(() => null);
     if (session !== activeSession) return;
     busy = false;
     if (draft() !== current) return;
-    const usable = question && !current.turns.some(turn => turn.role === 'assistant' && turn.content === question.prompt);
-    setDraft({...current,next:usable ? question : undefined,localQuestion:!usable});
+    const updated = CI.applyContext(current,planned?.covered);
+    const remaining = CI.questions(updated);
+    const next = remaining.some(item => item.key === planned?.next?.key) ? planned.next : undefined;
+    if (!remaining.length) return finishIntake(updated);
+    setDraft({...updated,next,localQuestion:!next});
   }
   if (view() === 'bot') {
     render();
@@ -574,8 +679,10 @@ async function prepareIntakeQuestion(current, openAssistant = false) {
   }
 }
 
-function beginIntake() {
+function beginIntake(force = false) {
   if (busy) return;
+  assistantTab = 'check';
+  if (activeEmergency() || (!force && !draft() && completedCheckTurns().length)) return showRoute('bot');
   if (draft()?.mode !== 'chat') {
     const last = records().find(entry => entry.date < E.dateKey() && (simulation() || !entry.sample));
     const yesterday = E.weekly([],state.env,2)[0].date;
@@ -584,8 +691,10 @@ function beginIntake() {
       .find(item => item.title === 'Symptoms')?.answer || (bodyConcern ? symptoms[bodyConcern.symptom]+' in '+regions[bodyConcern.region] : '');
     const previous = state.records.filter(entry => entry.date <= E.dateKey() && (simulation() || !entry.sample))
       .sort((a,b) => b.date.localeCompare(a.date))[0];
+    const recentChat = freeChatTurns().filter(turn => turn.role === 'user' && turn.date === E.dateKey() &&
+      turn.env === state.env && (!turn.mode || turn.mode === 'chat')).slice(-4).map(turn => turn.content.slice(0,260));
     const personal = {name:firstName(),recent:last ? {sleep:last.values.sleep,mood:last.values.mood} : null,
-      recentConcern:recentConcern?.slice(0,115),history:historicalContext(recentConcern),
+      recentConcern:recentConcern?.slice(0,115),recentChat,
       changedEnvironment:!!previous && previous.env !== state.env};
     if (!setDraft(CI.create(state.env,E.dateKey(),today(),draft(),personal))) return;
   }
@@ -601,7 +710,8 @@ async function submitIntake(value, skip = false, file) {
   let next;
   try {
     let kind = skip ? '' : CI.emergencyKind(value);
-    if (!kind && !skip && value.trim() && !prompt.options &&
+    const freeResponse = !prompt.options || prompt.freeText && !Object.hasOwn(prompt.options,value.trim());
+    if (!kind && !skip && value.trim() && freeResponse &&
         !(prompt.metric && /^[\d\s.,/°]+(?:c|bpm|mm\s*hg|mg\s*\/\s*dl|hrs?|hours?)?$/i.test(value))) {
       busy = true;
       if (view() === 'bot') render();
@@ -632,58 +742,58 @@ async function submitIntake(value, skip = false, file) {
 
 async function finishIntake(current = draft()) {
   if (current?.mode !== 'chat' || busy) return;
-  const entry = CI.toEntry(current,today());
+  const entry = CI.toEntry(current,state.records.find(item => item.env === current.env && item.date === current.date));
   entry.sample = simulation();
-  const urgent = CI.urgent({...current,values:entry.values});
+  const urgent = CI.urgent({...current,values:entry.values,sample:entry.sample});
   const drafts = {...state.drafts};
   delete drafts[current.env];
   const urgentReport = urgent && (current.turns.findLast(turn => turn.role === 'user' && CI.emergencyKind(turn.content) === urgent) ||
     current.turns.findLast(turn => turn.role === 'user'));
-  let reply = urgent && urgent !== 'temperature' ? emergencyAnswer(urgent,urgentReport?.content) : intakeSummary(entry,urgent);
+  const reply = urgent && urgent !== 'temperature' ? emergencyAnswer(urgent,urgentReport?.content) : intakeSummary(entry,urgent);
   const hasData = !!urgent || Object.keys(current.values).length > 0 ||
     Object.entries(current.answers).some(([key,value]) => key !== 'urgent' && value !== '') || current.image !== today()?.image && !!current.image;
+  if (urgent) { entry.emergencyId = crypto.randomUUID(); assistantTab = 'check'; }
   entry.summary = reply;
-  if (!save({...state,drafts,records:hasData ? [...state.records.filter(item => item.env !== entry.env || item.date !== entry.date),entry] : state.records})) {
+  const measurements = {values:entry.values,flags:CI.differingReadings(entry).map(metric => metric.key)};
+  const turn = {...(hasData ? reply : {}),role:'assistant',mode:'check',date:current.date,env:current.env,
+    content:hasData ? reply.text : 'Check-in skipped.',measurements,urgent:!!urgent,urgentKind:urgent || undefined,incidentId:entry.emergencyId};
+  const dailyFlow = current.date === E.dateKey() ?
+    {...flow(),date:current.date,check:urgent ? 'urgent' : hasData ? 'done' : 'pending'} : state.dailyFlow;
+  const owner = session;
+  const update = {...state,drafts,dailyFlow,
+    checkBeforeAlert:urgent ? flow().check : state.checkBeforeAlert,
+    urgentAlert:urgent ? turn : state.urgentAlert,
+    records:hasData ? [...state.records.filter(item => item.env !== entry.env || item.date !== entry.date),entry] : state.records,
+    conversations:[...(state.conversations || []),...intakeTurns(current),turn]};
+  if (!save(update)) {
     if (urgent) {
-      state = {...state,drafts,dailyFlow:{...flow(),date:E.dateKey(),check:'urgent'}};
-      const safetyTurn = {...reply,role:'assistant',mode:'check',content:reply.text,urgent:true,date:E.dateKey(),env:state.env};
-      chat.push(...current.turns,safetyTurn);
+      state = {...state,urgentAlert:turn,dailyFlow,checkBeforeAlert:flow().check};
       showRoute('bot');
-      if (readAloud) speakReply(safetyTurn);
+      presentHam(turn);
     }
     return;
   }
-  const activeSession = session;
-  const measurements = {values:entry.values,flags:CI.differingReadings(entry).map(metric => metric.key)};
-  const transcript = current.turns.map(turn => ({...turn,mode:'check'}));
-  if (hasData && !urgent) {
-    const concern = entry.details.map(item => item.answer).join(' ');
-    const context = crewContext('daily',concern);
-    busy = true;
-    if (view() === 'bot') render();
-    try {
-      const recentResponses = current.turns.filter(turn => turn.role === 'user').map(turn => turn.content.slice(0,240));
-      reply = await AI.checkInSummary({...context,recentResponses},checkFollowUps(entry));
-    } catch { /* Keep the local summary when documents or Qwen are unavailable. */ }
-    finally { if (session === activeSession) busy = false; }
-  }
-  if (session !== activeSession) return;
-  const turn = {...(hasData ? reply : {}),role:'assistant',mode:'check',content:hasData ? reply.text : 'Check-in skipped.',measurements,urgent:!!urgent,urgentKind:urgent || undefined};
-  const conversation = datedTurns([...transcript,turn]);
-  const persisted = save({...state,urgentAlert:urgent ? conversation.at(-1) : state.urgentAlert,dailyFlow:{...flow(),date:E.dateKey(),check:urgent ? 'urgent' : hasData ? 'done' : 'skipped'},
-    records:state.records.map(item => item === entry ? {...item,summary:reply} : item),
-    conversations:[...(state.conversations || []),...conversation]});
-  if (!persisted && !urgent) return;
-  if (!persisted) state = {...state,dailyFlow:{...flow(),date:E.dateKey(),check:'urgent'}};
-  chat.push(...conversation);
   if (urgent && view() !== 'bot') showRoute('bot');
-  if (view() === 'bot') {
-    render();
-    if (readAloud) speakReply(turn);
+  else if (view() === 'bot') render();
+  if (urgent && urgentReport && ['violence','self-harm','unresponsive','medical'].includes(urgent)) {
+    addEmergencyHandoff(urgentReport.content,urgent,turn,owner);
   }
-  if (urgentReport && ['violence','self-harm','unresponsive','medical'].includes(urgent)) {
-    addEmergencyHandoff(urgentReport.content,urgent,conversation.at(-1),activeSession);
+  if (hasData && !urgent) {
+    try {
+      const recentResponses = current.turns.filter(item => item.role === 'user').map(item => item.content.slice(0,240));
+      const enhanced = await AI.checkInSummary({...crewContext('daily',entry.details.map(item => item.answer).join(' ')),recentResponses},checkFollowUps(entry));
+      if (owner !== session || !state.records.includes(entry) || !state.conversations.includes(turn)) return;
+      const revised = {...turn,...enhanced,content:enhanced.text};
+      if (!save({...state,records:state.records.map(item => item === entry ? {...item,summary:enhanced} : item),
+        conversations:state.conversations.map(item => item === turn ? revised : item)})) return;
+      if (view() === 'bot' && assistantTab === 'check' && !draft() && E.dateKey() === current.date) {
+        render();
+        presentHam(revised);
+      }
+      return;
+    } catch { /* The local summary and conversation are already saved. */ }
   }
+  if (owner === session && view() === 'bot' && assistantTab === 'check') presentHam(turn);
 }
 
 function details(entry, includeControls = true) {
@@ -707,7 +817,7 @@ function checkView() {
   const entry = today();
   let body;
   if (current?.mode === 'chat') {
-    body = '<h2>Check-in in progress</h2>'+button('Resume with NETIN','assist-check','primary');
+    body = '<h2>Check-in in progress</h2>'+button('Resume with Ham','assist-check','primary');
   } else if (current) {
     const step = E.steps[current.index];
     const metric = E.metricByKey(step.key);
@@ -731,10 +841,10 @@ function checkView() {
       (step.key === 'note' ? '' : '<button class="button" type="submit" value="skip">Skip</button>')+(current.index ? button('Back','back') : '')+'</div></form>';
   } else if (entry) {
     body = '<h2>Today’s check-in</h2>'+assessment(entry)+E.metrics.map(metric => reading(metric,entry.values[metric.key])).join('')+details(entry)+
-      '<div class="actions">'+button('Check in again with NETIN','assist-check')+button('Edit readings manually','start')+button(entry.review ? 'Marked for review' : 'Mark for medical review','review','',entry.review ? 'disabled' : '')+
+      '<div class="actions">'+button('Check in again with Ham','assist-check')+button('Edit readings manually','start')+button(entry.review ? 'Marked for review' : 'Mark for medical review','review','',entry.review ? 'disabled' : '')+
       button('Review with assistant','assist-daily')+button('Save medical summary','export')+'</div>';
   } else {
-    body = '<h2>Ready to check in?</h2><p>Record physical condition, sleep, mood and instrument readings for this shift.</p><div class="actions">'+button('Start check-in with NETIN','assist-check','primary')+button('Enter readings manually','start')+'</div>';
+    body = '<h2>Ready to check in?</h2><p>Record physical condition, sleep, mood and instrument readings for this shift.</p><div class="actions">'+button('Start check-in with Ham','assist-check','primary')+button('Enter readings manually','start')+'</div>';
   }
   const photo = dailyPhoto(E.dateKey());
   return pageHead(environment().name,'Daily check-in',simulation() ? 'Demo profile. Entries are saved as simulation data.' : 'Entries are saved on this computer.')+'<div class="work-grid"><section class="work-sheet">'+body+
@@ -755,7 +865,7 @@ function sourcesView(sources) {
 function replySections(turn) {
   const fields = AI.titles(turn.sections);
   return '<dl class="reply-sections">'+fields.map(([key,title]) =>
-    '<dt>'+title+'</dt><dd>'+escape(turn.sections[key])+'</dd>').join('')+'</dl>'+sourcesView(turn.sources);
+    '<dt>'+title+'</dt><dd>'+escape(AI.clearTags(turn.sections[key]))+'</dd>').join('')+'</dl>'+sourcesView(turn.sources);
 }
 
 function summaryParagraph(value) {
@@ -769,7 +879,7 @@ function paragraphReply(value) {
     documentTarget({...source, action:index === 0 ? 'Open relevant passage' : source.title})).join('')+'</div>' :
     value.related ? '<div>'+link('Open Documents','guias','compact')+'</div>' : '';
   if (value.sections && !value.urgent) return replySections(value)+actions;
-  return '<p'+(value.urgent ? ' class="notice critical"' : '')+'>'+escape(summaryParagraph(value))+'</p>'+
+  return '<p'+(value.urgent ? ' class="notice critical"' : '')+'>'+escape(AI.clearTags(summaryParagraph(value)))+'</p>'+
     sourcesView(value.sources)+actions+
     (value.handoff ? '<p class="micro">Report to responders: “'+escape(value.handoff)+'”</p>' : '');
 }
@@ -804,15 +914,17 @@ function motorSummary(result) {
     (baseline ? '<dd class="micro">Usual '+baseline[key]+' '+unit+'</dd>' : '')+'</div>').join('')+'</dl>'+
     '<p>'+skill+'</p><p>'+result.misses+' misses'+(result.early != null ? ' · '+result.early+' early taps' : '')+'</p>'+
     '<p class="muted">'+(baseline ? 'Usual values are medians from '+baseline.count+' matching previous days. If a change persists, share the log with the crew medical officer.' :
-      'Your usual values will appear after 3 previous days with the same hand, input, board size, environment and cue.')+'</p>';
+      'Your usual values will appear after 3 previous days with the same hand, input, board size, environment and game cues.')+'</p>';
 }
 
 function motorView() {
   const game = Motor.games[motorGame];
   const saved = motorHistory().find(day => day.date === E.dateKey() && day.env === state.env && Motor.gameOf(day) === motorGame);
   const result = motorResult || saved;
-  const grid = motorGame === 'taps' ? '<span class="motor-pad">Left</span><span class="motor-pad">Right</span>' :
-    Array.from({length:15},() => '<span class="'+(motorGame === 'dock' ? 'motor-beacon' : 'motor-bay')+'" aria-hidden="true"></span>').join('');
+  const animal = {dock:'panda',cargo:'turtle',taps:'fox'}[motorGame];
+  const sprite = UI.animal(animal);
+  const grid = motorGame === 'taps' ? '<span class="motor-pad">'+sprite+'Left</span><span class="motor-pad">'+sprite+'Right</span>' :
+    Array.from({length:15},() => '<span class="'+(motorGame === 'dock' ? 'motor-beacon' : 'motor-bay')+'" aria-hidden="true">'+sprite+'</span>').join('');
   return pageHead(environment().name,'Motor skills','Practice reaction, hand–eye coordination and finger control.')+
     workflow()+'<div class="actions flow-actions">'+button(flow().motor ? 'Continue to journal' : 'Skip today’s test','next-journal',flow().motor ? 'primary' : '',motorRound ? 'disabled' : '')+'</div>'+
     '<div class="actions motor-select" role="group" aria-label="Select a motor game">'+Object.entries(Motor.games).map(([key,item]) =>
@@ -822,12 +934,13 @@ function motorView() {
     (motorRound ? '<p id="motor-status" role="status"></p><div id="motor-board" class="motor-board motor-'+motorGame+'" aria-label="'+game.name+'">'+
       grid+'</div><div class="actions">'+button('End round','motor-cancel')+'</div>' :
       '<p id="motor-status" role="status">'+escape(motorMessage)+'</p>'+
-      (result ? '<h3>'+(motorResult ? 'Round complete' : 'Today’s result')+'</h3>'+motorSummary(result) : '<p>'+game.description+'</p>')+
+      (result ? '<h3>'+(motorResult ? 'Round complete' : 'Today’s result')+'</h3>'+motorSummary(result) :
+        '<div class="game-preview">'+sprite+'<p>'+game.description+'</p></div>')+
       '<form id="motor-form"><fieldset class="motor-hands"><legend>Which hand will you use?</legend>'+
       Object.entries(Motor.hands).map(([key,label]) => '<label><input type="radio" name="hand" value="'+key+'"'+
         ((result?.hand || motorHistory().at(-1)?.hand || 'right') === key ? ' checked' : '')+'> '+label+'</label>').join('')+'</fieldset>'+
       '<button class="button primary" type="submit">'+(saved ? 'Practice' : 'Start test')+'</button></form>')+'</section>'+
-    '<aside class="side-sheet"><h2>Compare your results</h2><p class="muted">Use the same hand and device each day. NETIN logs your first result for each test.</p>'+
+    '<aside class="side-sheet"><h2>Compare your results</h2><p class="muted">Use the same hand and device each day. NOMAD logs your first result for each test.</p>'+
     '<p class="muted">The result measures your performance in the test.'+
     (simulation() ? ' Demo profile results are labeled as simulation.' : '')+'</p></aside></div>'+
     '<section class="work-sheet report-notes motor-log"><h2>Motor log</h2>'+motorHistoryFilter()+'</section>';
@@ -843,7 +956,7 @@ function startMotorRound(hand) {
   $('motor-board').scrollIntoView({block:'nearest'});
   round.cancel = Motor.play[round.game]($('motor-board'),$('motor-status'),result => {
     motorRound = undefined;
-    motorResult = {date:round.date,env:round.env,hand,game:round.game,...result,sample:simulation()};
+    motorResult = {date:round.date,env:round.env,hand,game:round.game,...result,sample:simulation(),scene:'wildlife'};
     if (motorHistory().some(day => day.date === round.date && day.env === round.env && Motor.gameOf(day) === round.game)) {
       markFlow('motor');
       motorMessage = 'Practice complete. Your saved daily result is still in the log.';
@@ -911,21 +1024,24 @@ function render() {
   const workspace = !!session;
   document.documentElement.dataset.stage = workspace ? state.env : stageChoice;
   $('sidebar').hidden = !workspace;
-  $('brand').innerHTML = workspace ? '' : UI.icon('orbit')+' NETIN';
+  $('brand').innerHTML = workspace ? '' : UI.icon('orbit')+' NOMAD';
   $('mast-stage').innerHTML = workspace ? stageBadge(state.env) : '';
   if (workspace) {
     const active = {motor:'health',journal:'panel',check:'bot',semana:'records',camera:'panel'}[route] || route;
     const icons = {panel:'home',bot:'bot',health:'health',records:'records',guias:'guias',settings:'settings'};
     const navigation = items => items.map(([key,label]) => '<a href="#'+key+'" title="'+label+'"'+(key === active ? ' aria-current="page"' : '')+'>'+UI.icon(icons[key])+'<span>'+label+'</span></a>').join('');
-    $('sidebar-brand').innerHTML = UI.icon('orbit')+' NETIN';
+    $('sidebar-brand').innerHTML = UI.icon('orbit')+' NOMAD';
     $('sidebar-crew').innerHTML = portrait(state.profile.name,validPhoto(crewPortrait))+'<div><strong>'+escape(state.profile.name)+
       '</strong><small>'+escape(state.profile.role)+'</small></div>';
     $('nav').innerHTML = navigation(routes);
     $('utilities').innerHTML = navigation(utilityRoutes);
   }
-  $('main').innerHTML = (storageError ? '<p class="notice">The local log could not be read. Restart NETIN if the problem persists.</p>' : '')+
+  $('main').innerHTML = (storageError ? '<p class="notice">The local log could not be read. Restart NOMAD if the problem persists.</p>' : '')+
     ({home,camera:cameraView,panel:workspaceHome,check:checkView,motor:motorView,bot:assistantView,semana:reportView,guias:documentsView,
       health:healthView,records:recordsView,settings:settingsView,journal:journalView})[route]();
+  attachHam(undefined,true);
+  const graph = $('measurement-trend');
+  if (graph) updateTrend(graph,wearableSnapshot());
   const log = $('chat-log');
   if (log) log.scrollTop = log.scrollHeight;
 }
@@ -1083,11 +1199,15 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
   const [turn] = datedTurns([{role:'user',content:query}]);
   const history = chat.filter(item => !item.mode || item.mode === 'chat').slice(-12).map(({role,content}) => ({role,content}));
   turn.mode = mode;
-  save({...state,conversations:[...(state.conversations || []),turn]});
-  const safetyHistory = chat.filter(item => item.date === turn.date).slice(-6);
+  turn.thread = state.chatThread || '';
+  if (!save({...state,conversations:[...(state.conversations || []),turn]})) return;
+  const currentAlert = activeEmergency();
+  const safetyHistory = chat.filter(item => item.date === turn.date && (!item.urgent || (currentAlert &&
+    (item.incidentId ? item.incidentId === currentAlert.id : item.content === currentAlert.content)))).slice(-6);
   chat = [...chat.slice(-79),turn];
+  const resolved = AI.resolvedMessage(query);
   let kind = CI.emergencyKind(query);
-  if (!kind && mode === 'chat') {
+  if (!kind && !resolved && mode === 'chat') {
     busy = true;
     if (view() === 'bot') render();
     try { kind = await AI.assessSafety(query,safetyHistory).catch(() => ''); }
@@ -1095,11 +1215,14 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
     if (session !== currentSession) return;
   }
   const nextEnv = mode === 'chat' ? E.detectEnvironmentChange(query) : null;
-  const lowTemperature = mode !== 'guide' && E.hasLowBodyTemperature(today());
+  const lowTemperature = !resolved && mode !== 'guide' && E.hasLowBodyTemperature(today()) &&
+    emergencyAlerts().some(alert => alert.reason && !(state.dismissedAlerts || []).some(record => record.id === alert.id));
   const urgent = kind || (lowTemperature ? 'temperature' : '');
   if (urgent) {
     const alert = kind ? emergencyAnswer(kind,query) : temperatureAlert(today());
-    chat.push({...alert,role:'assistant',content:alert.text,urgent:true,urgentKind:urgent});
+    chat.push({...alert,role:'assistant',content:alert.text,urgent:true,urgentKind:urgent,incidentId:crypto.randomUUID()});
+  } else if (resolved && currentAlert) {
+    chat.push({role:'assistant',content:'[[neutral]] Thanks for the update. The emergency alert is still available. You can dismiss it once the immediate concern has been addressed.'});
   } else if (nextEnv) {
     let text = E.environments[nextEnv].name+' is already the active environment.';
     if (nextEnv !== state.env) {
@@ -1110,23 +1233,24 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
     chat.push({role:'assistant',content:text});
   } else {
     const review = mode === 'daily' || mode === 'week';
-    const data = crewContext(mode,query);
     const intent = mode === 'chat' ? AI.chatIntent(query,history) : null;
+    const companionMode = mode === 'chat' && chatMode === 'companion' && !intent.health;
+    let social;
     busy = true;
     render();
     try {
-      let social;
-      if (mode === 'chat' && chatMode === 'companion' && !intent.health) {
-        social = await AI.companion(query,history,environment().name,data);
+      if (companionMode) {
+        social = await AI.companion(query,history,environment().name,firstName());
         if (session !== currentSession) return;
       }
       if ((!social || social.health) && missionIndexing) {
         await missionIndexing;
         if (session !== currentSession) return;
       }
+      const data = social && !social.health ? null : crewContext(mode,query);
       const hasReviewData = !review || data.checkIns.length > 0;
       const relevantTerms = searchContext || (review ? reviewSearch(data) : intent?.search || '');
-      const result = social && !social.health ? {text:social.text || 'I didn’t have a useful reply to that. You can try a different way of asking.'} :
+      const result = social && !social.health && social.text ? {text:social.text} :
         hasReviewData ? await AI.answer(query,mode === 'chat' ? history : [],library,data,relevantTerms,!intent?.search) : null;
       if (session !== currentSession) return;
       turn.modelTurn = !!result?.sources?.length;
@@ -1136,7 +1260,9 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
         sections:reply?.sections,sources:reply?.sources,modelTurn:turn.modelTurn,companion:turn.companion});
       if (turn.modelTurn || turn.companion) model = 'ready';
     } catch (error) {
-      if (session === currentSession) {
+      if (session === currentSession && companionMode && !social?.health) {
+        chat.push({role:'assistant',content:'I couldn’t respond just now. Your message is still here in the chat.'});
+      } else if (session === currentSession) {
         if (missionIndexing) await missionIndexing;
         if (session !== currentSession) return;
         const related = AI.findPassages(query,history,library,searchContext,environment().name);
@@ -1149,15 +1275,18 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
     } finally { if (session === currentSession) busy = false; }
   }
   if (session === currentSession && chat.at(-1)?.role === 'assistant') {
-    const [reply] = datedTurns([{...chat.at(-1),mode,date:turn.date,env:turn.env}]);
+    const [reply] = datedTurns([{...chat.at(-1),mode,date:turn.date,env:turn.env,thread:turn.thread}]);
     chat[chat.length-1] = reply;
     const dailyFlow = urgent ? {...flow(),date:E.dateKey(),check:'urgent'} : state.dailyFlow;
-    if (!save({...state,dailyFlow,urgentAlert:urgent ? reply : state.urgentAlert,conversations:[...(state.conversations || []),reply]}) && urgent) state = {...state,dailyFlow};
+    const checkBeforeAlert = urgent && flow().check !== 'urgent' ? flow().check : state.checkBeforeAlert;
+    if (!save({...state,dailyFlow,checkBeforeAlert,urgentAlert:urgent ? reply : state.urgentAlert,conversations:[...(state.conversations || []),reply]}) && urgent) {
+      state = {...state,dailyFlow,checkBeforeAlert,urgentAlert:reply};
+    }
   }
   if (session === currentSession && view() === 'bot') {
     render();
     $('chat-form')?.elements.query.focus();
-    if (readAloud) speakReply(chat.at(-1));
+    presentHam(chat.at(-1));
   }
   if (session === currentSession && urgent && view() !== 'bot') showRoute('bot');
   if (session === currentSession && kind) addEmergencyHandoff(query,kind,chat.at(-1),currentSession);
@@ -1170,7 +1299,7 @@ function addEmergencyHandoff(report,kind,immediate,owner) {
     if (!save({...state,conversations:(state.conversations || []).map(update)})) return;
     chat = chat.map(update);
     const last = $('chat-log')?.lastElementChild;
-    if (view() === 'bot' && !draft() && chat.at(-1)?.handoff === handoff && last?.classList.contains('assistant')) {
+    if (view() === 'bot' && assistantTab === 'chat' && chat.at(-1)?.handoff === handoff && last?.classList.contains('assistant')) {
       const note = document.createElement('p');
       note.className = 'micro';
       note.textContent = 'Report to responders: "'+handoff+'"';
@@ -1191,20 +1320,23 @@ function reviewSearch(data) {
   return [...topics, data.activeEnvironment].join(' ');
 }
 
-function exportReport(weekly) {
-  const entries = weekly ? reportDays() : [{date:today().date,entry:today()}];
+function exportReport(weekly, reportDate = E.dateKey()) {
+  const dailyEntries = weekly ? [] : state.records.filter(item => item.date === reportDate);
+  const entries = weekly ? reportDays() : [{date:reportDate,entry:dailyEntries.find(item => item.env === state.env) || dailyEntries.at(-1)}];
+  const conversations = weekly ? [] : recordedConversations().filter(item => item.date === reportDate);
+  const moods = weekly ? [] : (state.moodLogs || []).filter(item => item.date === reportDate);
   const title = weekly ? (reportLength === 7 ? 'Weekly' : '30-day')+' crew health log' : 'Crew medical summary';
   const markup = '<!doctype html><html lang="en"><meta charset="utf-8"><title>'+title+'</title><style>body{max-width:860px;margin:35px auto;padding:0 20px;font:16px/1.5 system-ui;color:#152c33}article{border-top:1px solid #a5b4b1;margin-top:26px}dt{font-weight:bold}img{max-width:100%;height:auto}</style><h1>'+
-    title+'</h1><p>NETIN / '+(entries.some(({entry}) => entry?.sample) ? 'Includes demonstration data / ' : '')+environment().name+'</p><p>Crew member: '+escape(state.profile.name)+'<br>Crew medical officer: '+escape(state.profile.medical)+
+    title+'</h1><p>NOMAD / '+(entries.some(({entry}) => entry?.sample) ? 'Includes demonstration data / ' : '')+environment().name+'</p><p>Crew member: '+escape(state.profile.name)+'<br>Crew medical officer: '+escape(state.profile.medical)+
     '<br>History: '+escape(state.profile.history)+'<br>Allergies: '+escape(state.profile.allergies)+'</p>'+
     (weekly ? '<h2>Log conclusion</h2>'+logConclusion(reportLength) : '')+
     entries.map(({date,entry}) => '<article><h2>'+formatDay(date)+'</h2>'+(entry ? assessment(entry)+'<ul>'+
     E.metrics.map(metric => '<li>'+metric.label+': '+E.format(entry.values[metric.key])+' '+metric.unit+'</li>').join('')+'</ul>'+details(entry,false) : '<p>No check-in.</p>')+
-    dailyPhoto(date)+'</article>').join('')+'<section><h2>Motor skills</h2>'+motorTable(entries)+'</section></html>';
-  const filename = 'netin-'+(weekly ? (reportLength === 7 ? 'weekly' : '30-day') : 'medical')+'-'+E.dateKey()+'.html';
+    dailyPhoto(date)+moods.map(item => '<h3>Mood check-in</h3>'+moodReport(item)).join('')+conversationLog(conversations,false)+'</article>').join('')+'<section><h2>Motor skills</h2>'+motorTable(entries)+'</section></html>';
+  const filename = 'nomad-'+(weekly ? (reportLength === 7 ? 'weekly' : '30-day') : 'medical')+'-'+(weekly ? E.dateKey() : reportDate)+'.html';
   const bridge = globalThis.chrome?.webview;
   if (bridge) bridge.postMessage(filename+'\n'+markup);
-  else notify('Open NETIN.exe to save the report.');
+  else notify('Open the NOMAD desktop app to save the report.');
 }
 
 window.addEventListener('hashchange',() => {
@@ -1266,7 +1398,8 @@ document.addEventListener('click',(event) => {
   if (action === 'skip-intake') return void submitIntake('',true,control.form?.elements.image?.files[0]);
   if (action === 'end-chat-check' || action === 'finish-chat-check') return void finishIntake();
   if (action === 'assist-daily' || action === 'assist-week') {
-    if (busy || draft()?.mode === 'chat') return beginIntake();
+    if (busy) return;
+    assistantTab = 'chat';
     const daily = action === 'assist-daily';
     showRoute('bot');
     return void sendMessage(daily ? 'Review today’s check-in. Explain which recorded items merit follow-up and what to ask the crew medical officer.' :
@@ -1278,7 +1411,7 @@ document.addEventListener('click',(event) => {
     $('trace-readout').innerHTML = traceReading(week().find(day => day.date === selectedDay));
   }
   if (action === 'open-chat' && view() === 'bot') $('chat-form')?.elements.query.focus();
-  if (action === 'speak-reply') return speakReply(chat[Number(control.dataset.index)]);
+  if (action === 'speak-reply') return speakReply((control.dataset.thread === 'check' ? completedCheckTurns() : chat)[Number(control.dataset.index)],control.closest('.message')?.querySelector('canvas.ham-avatar'));
   if (action === 'stop-speech') return stopSpeech();
   if (action === 'toggle-speech') {
     readAloud = !readAloud;
@@ -1310,6 +1443,7 @@ document.addEventListener('click',(event) => {
 document.addEventListener('input',(event) => {
   const control = event.target;
   if (control.form?.id === 'journal-form') queueJournal(control);
+  if (control.form?.id === 'mood-form') moodDraft = readMoodForm(control.form);
   if (control.form?.id === 'body-form') {
     const fields = control.form.elements;
     bodyEdit = {symptom:fields.symptom.value,intensity:fields.intensity.value,notes:fields.notes.value};
@@ -1332,6 +1466,8 @@ document.addEventListener('change',(event) => {
       $('region-search').focus();
     }
   }
+  if (control.id === 'ultrasound-file') void Ultrasound.select(control.files[0]);
+  if (control.id === 'ultrasound-confirm') Ultrasound.setConfirmed(control.checked);
   if (control.id === 'markdown-files') void importSelectedMarkdown(Array.from(control.files));
   if (control.id === 'trend-metric' && Object.hasOwn(metricNames,control.value)) {
     trendMetric = control.value;
@@ -1345,7 +1481,8 @@ document.addEventListener('change',(event) => {
 document.addEventListener('submit',async (event) => {
   event.preventDefault();
   const form = event.target;
-  if (['stage-form','stage-confirm-form','body-form','journal-form','document-search','records-filter','motor-filter'].includes(form.id)) return workspaceSubmit(form);
+  if (form.id === 'ultrasound-form') return void Ultrasound.analyze();
+  if (['stage-form','stage-confirm-form','body-form','journal-form','document-search','records-filter','motor-filter','mood-form','backdrop-form','dismiss-alert-form','restart-chat-form'].includes(form.id)) return workspaceSubmit(form);
   if (form.id === 'medical-supplies-form') {
     const items = state.medicalSupplies || [];
     const name = form.elements.supply.value.trim();
@@ -1398,17 +1535,14 @@ document.addEventListener('submit',async (event) => {
   }
 });
 
-globalThis.chrome?.webview?.addEventListener('message', ({data}) => {
-  if (data?.channel !== 'netin-voice-unavailable' || data.id !== voiceRequest || !voiceText) return;
-  const voices = globalThis.speechSynthesis?.getVoices().filter(voice => voice.localService) || [];
-  const voice = voices.find(voice => /^en(?:[-_]|$)/i.test(voice.lang)) || voices[0];
-  const message = 'Windows could not play this reply. Check the installed voices and sound output.';
-  if (!voice) return notify(message);
-  const reply = new SpeechSynthesisUtterance(voiceText);
-  reply.voice = voice;
-  reply.volume = appearance.volume / 100;
-  reply.onerror = () => { if (data.id === voiceRequest) notify(message); };
-  speechSynthesis.speak(reply);
+globalThis.chrome?.webview?.addEventListener('message',({data}) => {
+  if (data?.id !== voiceRequest || !voiceText) return;
+  if (data.channel === 'netin-voice-unavailable') return browserSpeech(data.id);
+  if (data.channel !== 'nomad-voice-event' || !['start','boundary','end'].includes(data.event)) return;
+  const event = new Event(data.event);
+  if (data.event === 'boundary') Object.defineProperty(event,'charIndex',{value:data.position});
+  hamUtterance?.dispatchEvent(event);
+  if (data.event === 'end') { hamUtterance = undefined; hamSpeechText = ''; voiceText = ''; }
 });
 window.addEventListener('pagehide', () => { flushJournal(false); cameraScreen?.controller.abort(); });
 $('modal').addEventListener('close', event => {
@@ -1422,7 +1556,7 @@ async function start() {
       history.replaceState(null,'',location.pathname);
       rosterReset = true;
     } catch {
-      $('main').textContent = 'Could not reset the profiles. Close NETIN and run the updater again.';
+      $('main').textContent = 'Could not reset the profiles. Close NOMAD and run the updater again.';
       return;
     }
   }
@@ -1458,3 +1592,4 @@ async function start() {
   void loadMarkdown();
 }
 void start();
+setInterval(refreshWearable,1600);

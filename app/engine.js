@@ -90,7 +90,8 @@
       .map((metric) => metric.label + ' ' + format(entry.values[metric.key]) + ' ' + metric.unit + ' (demo baseline ' + format(metric.base) + ')');
     const impact = entry.values.impact;
     const coverage = metrics.filter((metric) => entry.values[metric.key] != null).length;
-    const hasObservation = Boolean(entry.values.context || entry.values.note || entry.image);
+    const hasObservation = Boolean(entry.values.context || entry.values.note || entry.image ||
+      entry.details?.some(detail => ['Effect on duties','Mood and duties notes'].includes(detail.title)));
     let attention = 'log';
     const lowTemperature = hasLowBodyTemperature(entry);
     if (impact === 'urgent' || lowTemperature) attention = 'urgent';
@@ -114,6 +115,29 @@
     });
   }
 
+  function simulatedReadings(env, date, frame = 0, profileOffset = 0) {
+    const anchors = {
+      earth:[68,116,74,36.6,93,7.7,8],
+      orbit:[73,114,72,36.5,95,7.1,7],
+      transit:[70,117,75,36.6,94,7.4,8],
+      moon:[75,118,76,36.7,97,7.2,8],
+      mars:[78,121,78,36.8,99,6.9,7]
+    };
+    const [pulse, systolic, diastolic, temp, glucose, sleep, mood] = anchors[env];
+    const day = Math.floor(Date.parse(date) / 86400000);
+    const variation = Math.round(1.5 * Math.sin(day * .81 + profileOffset) + .65 * Math.cos(day * .29));
+    const nudge = index => [0,1,0,-1,0,0][(frame + index) % 6];
+    const decimal = (value, steps) => Math.round(value * 10 + steps) / 10;
+    return {
+      pulse:pulse + variation + nudge(0),
+      pressure:[systolic + variation + nudge(1), diastolic + variation + nudge(3)],
+      temp:decimal(temp,Math.sign(variation) + nudge(2)),
+      glucose:glucose + variation,
+      sleep:decimal(sleep,variation),
+      mood:mood + Math.sign(variation)
+    };
+  }
+
   function initialState() {
     const sleeps = [7.4, 7.7, 7.2, 7.5, 6.8, 6.2];
     const moods = [8, 8, 9, 8, 7, 7];
@@ -129,7 +153,7 @@
   }
 
   const engine = { environments, metrics, steps, labels, dutyImpact, format, metricByKey, medicalHelp, lowTemperatureSource, hasLowBodyTemperature,
-    detectEnvironmentChange, dateKey, status, parseMetric, evaluate, weekly, initialState };
+    detectEnvironmentChange, dateKey, status, parseMetric, evaluate, weekly, initialState, simulatedReadings };
   root.AstraEngine = engine;
   if (typeof module !== 'undefined') module.exports = engine;
 })(globalThis);
