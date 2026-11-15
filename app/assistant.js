@@ -55,18 +55,18 @@ globalThis.AstraAssistant = (() => {
     }
   }
 
-  function chunks(text, page) {
-    const clean = text.replace(/\s+/g, ' ').trim();
+  function chunks(markdown, page) {
     const result = [];
-    for (let start = 0; start < clean.length;) {
-      let end = Math.min(clean.length, start + 1250);
-      if (end < clean.length) {
-        const boundary = clean.lastIndexOf(' ', end);
+    for (let start = 0; start < markdown.length;) {
+      let end = Math.min(markdown.length, start + 1250);
+      if (end < markdown.length) {
+        const boundary = Math.max(markdown.lastIndexOf(' ',end),markdown.lastIndexOf('\n',end));
         if (boundary > start + 1000) end = boundary;
       }
-      result.push({ page, text: clean.slice(start, end).trim() });
-      if (end >= clean.length) break;
-      start = Math.max(end - 145, start + 1);
+      const text = markdown.slice(start,end).replace(/\s+/g,' ').trim();
+      if (text) result.push({page,text,start,end});
+      if (end >= markdown.length) break;
+      start = Math.max(end-145,start+1);
     }
     return result;
   }
@@ -102,10 +102,16 @@ globalThis.AstraAssistant = (() => {
 
   async function loadMarkdown(progress) {
     const prior = await documents('readonly',store => store.getAll());
-    const cached = prior.filter(item => item.id.startsWith('markdown:'));
+    const cached = prior.filter(item => item.id.startsWith('markdown:')).map(item =>
+      item.excerpts?.every(excerpt => Number.isInteger(excerpt.start)) ? item : {...item,excerpts:chunks(item.markdown,null)});
     if (prior.length !== cached.length) await replaceDocuments(cached);
-    const response = await fetch('knowledge/index.json',{cache:'no-store'});
-    if (response.status === 404) return cached;
+    let root = 'knowledge';
+    let response = await fetch(root+'/index.json',{cache:'no-store'}).catch(() => null);
+    if ((!response || response.status === 404) && !cached.length) {
+      root = 'starter-library';
+      response = await fetch(root+'/index.json',{cache:'no-store'});
+    }
+    if (!response || response.status === 404) return cached;
     if (!response.ok) throw new Error('Could not open the Markdown index.');
     const {revision,files} = await response.json();
     if (typeof revision !== 'string' || !Array.isArray(files) || !files.length ||
@@ -116,7 +122,7 @@ globalThis.AstraAssistant = (() => {
     const entries = [];
     for (const item of files) {
       progress('Reading '+(entries.length+1)+' of '+files.length+' documents…');
-      const file = await fetch('knowledge/files/'+item.hash.toLowerCase()+'.md');
+      const file = await fetch(root+'/files/'+item.hash.toLowerCase()+'.md');
       if (!file.ok) throw new Error('Missing document '+item.path+'.');
       const bytes = await file.arrayBuffer();
       const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(value => value.toString(16).padStart(2,'0')).join('');
@@ -173,9 +179,9 @@ globalThis.AstraAssistant = (() => {
       if (entry.hash && unique.has(entry.hash)) continue;
       if (entry.hash) unique.add(entry.hash);
       const titleWords = new Set(words(entry.title+' '+(entry.path || []).join(' ')));
-      for (const {page,text} of entry.excerpts) {
+      for (const {page,text,start,end} of entry.excerpts) {
         const i = passages.length;
-        passages.push({title:entry.title,url:entry.url,id:entry.id,page,text,file:entry.file});
+        passages.push({title:entry.title,url:entry.url,id:entry.id,page,text,start,end});
         for (const term of new Set([...words(text),...titleWords])) {
           if (!postings.has(term)) postings.set(term,[]);
           postings.get(term).push(i);
@@ -187,7 +193,7 @@ globalThis.AstraAssistant = (() => {
     return indexed;
   }
 
-  function retrieve(question, history, library, extraTerms, environment) {
+  function retrieve(question, history, library, extraTerms, environment, allowFallback = true) {
     const prior = history.filter((turn) => turn.role === 'user').slice(-2).map((turn) => turn.content).join(' ');
     const weights = new Map();
     for (const word of words(prior)) weights.set(word, 1);
@@ -206,7 +212,7 @@ globalThis.AstraAssistant = (() => {
       /earth orbit|\bleo\b/i.test(environment) ? /earth orbit|\bleo\b/ : null;
     const candidates = [...scores].map(([index,score]) => [index,score +
       (environmentKey?.test(passages[index].title.toLowerCase()) ? 1.5 : 0)]).sort((a,b) => b[1]-a[1]);
-    if (!candidates.length && passages.length <= 8) return passages;
+    if (!candidates.length && allowFallback && passages.length <= 8) return passages;
     const picked = [];
     const seen = new Map();
     for (const [index,score] of candidates) {
@@ -225,7 +231,7 @@ globalThis.AstraAssistant = (() => {
   };
   const medicalTitles = {measurements:'Measurements',indicators:'Indicators',risks:'Risks'};
   const titles = sections => Object.entries({...sectionTitles,...medicalTitles}).filter(([key]) => typeof sections?.[key] === 'string' && sections[key]);
-  const companionStyle = 'You are NETIN, a warm, down-to-earth mission companion and an AI assistant. Listen first. Pick one concrete detail the astronaut just shared, such as an event, a person, or a change in their routine, and refer to it directly. Ask about that detail when useful. If they share only a feeling, acknowledge it. Avoid generic replies such as “tell me about your day” after they have already told you something. Be brief, respectful, and natural. Always respond in clear English, even if the astronaut uses another language. Never pretend to be human, infer a feeling they did not share, or encourage reliance on you instead of human contact.';
+  const companionStyle = 'You are Ham, a direct, compassionate mission companion and the AI assistant in NETIN. Listen first. Pick one concrete detail the astronaut just shared, such as an event, a person, or a change in their routine, and refer to it directly. Ask about that detail when useful. If they share only a feeling, acknowledge it. Avoid generic replies such as “tell me about your day” after they have already told you something. Be brief, respectful, and natural. Always respond in clear English, even if the astronaut uses another language. Never pretend to be human, infer a feeling they did not share, or encourage reliance on you instead of human contact.';
   function summary(sections, sources = []) {
     const text = titles(sections).map(([key, title]) => title+'\n'+sections[key]).join('\n\n');
     return {text, sections, sources};
@@ -411,5 +417,6 @@ globalThis.AstraAssistant = (() => {
   }
 
   return { model, titles, summary, loadMarkdown, replaceMarkdown, reflect, checkInSummary,
-    modelStatus: () => request('status'), answer, assessSafety, emergencyHandoff, checkInQuestion, chatIntent, companion };
+    findPassages: (query,history,library,terms,environment) => retrieve(query,history,library,terms,environment,false).slice(0,3),
+    modelStatus: () => request('status',{},6500), answer, assessSafety, emergencyHandoff, checkInQuestion, chatIntent, companion };
 })();

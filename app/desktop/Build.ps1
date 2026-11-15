@@ -39,15 +39,31 @@ if ($PSCmdlet.ParameterSetName -eq 'Package') {
 }
 
 New-Item -ItemType Directory -Path $ui -Force | Out-Null
-foreach ($file in @('index.html', 'style.css', 'assistant.js', 'check-in.js', 'crew-camera.js', 'crew-profiles.js', 'engine.js', 'motor.js', 'workspace.js', 'app.js')) {
+foreach ($file in @('index.html', 'style.css', 'assistant.js', 'check-in.js', 'crew-camera.js', 'crew-profiles.js', 'engine.js', 'motor.js', 'workspace.js', 'app.js', 'ui.js')) {
     Copy-Item -LiteralPath (Join-Path $project $file) -Destination $ui
 }
 $fonts = Join-Path $ui 'assets'
 New-Item -ItemType Directory -Path $fonts -Force | Out-Null
-foreach ($file in @('archivo.woff2', 'OFL-Archivo.txt')) {
+foreach ($file in @('public-sans.woff2', 'OFL-PublicSans.txt', 'earth-orbit.jpg', 'ham.svg')) {
     Copy-Item -LiteralPath (Join-Path $project "assets\$file") -Destination $fonts
 }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'README.txt') -Destination $output
+
+$references = Join-Path (Split-Path -Parent $project) 'references'
+if (Test-Path -LiteralPath $references -PathType Container) {
+    $starter = Join-Path $ui 'starter-library'
+    $passages = Join-Path $starter 'files'
+    New-Item -ItemType Directory -Path $passages -Force | Out-Null
+    $entries = @(Get-ChildItem -LiteralPath $references -File -Filter '*.md' | Sort-Object Name | ForEach-Object {
+        $digest = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $passages "$digest.md") -Force
+        @{path=$_.Name; hash=$digest}
+    })
+    if ($entries.Count) {
+        $index = @{revision=('starter-' + (($entries | ForEach-Object { $_.hash }) -join '-')); files=$entries}
+        [IO.File]::WriteAllText((Join-Path $starter 'index.json'),($index | ConvertTo-Json -Depth 4),[Text.UTF8Encoding]::new($false))
+    }
+}
 
 $exe = Join-Path $output 'NETIN.exe'
 $framework = Split-Path -Parent $compiler

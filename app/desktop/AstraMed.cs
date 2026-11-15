@@ -206,7 +206,7 @@ internal sealed class MissionWindow : Form
         base.Dispose(disposing);
     }
 
-    private void SpeakReply(int id, string text)
+    private void SpeakReply(int id, string text, int volume)
     {
         speechRequest = id;
         try
@@ -229,6 +229,7 @@ internal sealed class MissionWindow : Form
                 };
             }
             speech.SpeakAsyncCancelAll();
+            speech.Volume = volume;
             activeSpeech = new Prompt(text);
             speech.SpeakAsync(activeSpeech);
         }
@@ -276,12 +277,17 @@ internal sealed class MissionWindow : Form
         if (message.StartsWith(speechPrefix, StringComparison.Ordinal))
         {
             int endOfId = message.IndexOf('\n', speechPrefix.Length);
+            int endOfVolume = endOfId < 0 ? -1 : message.IndexOf('\n', endOfId + 1);
             int id;
-            if (endOfId > speechPrefix.Length && endOfId <= speechPrefix.Length + 10 && message.Length <= endOfId + 1801 &&
-                Int32.TryParse(message.Substring(speechPrefix.Length, endOfId - speechPrefix.Length), out id))
+            int volume;
+            if (endOfId > speechPrefix.Length && endOfId <= speechPrefix.Length + 10 &&
+                endOfVolume > endOfId && endOfVolume <= endOfId + 4 && message.Length <= endOfVolume + 1801 &&
+                Int32.TryParse(message.Substring(speechPrefix.Length, endOfId - speechPrefix.Length), out id) &&
+                Int32.TryParse(message.Substring(endOfId + 1, endOfVolume - endOfId - 1), out volume) &&
+                volume >= 0 && volume <= 100)
             {
-                string text = message.Substring(endOfId + 1).Trim();
-                if (text.Length > 0) SpeakReply(id, text);
+                string text = message.Substring(endOfVolume + 1).Trim();
+                if (text.Length > 0) SpeakReply(id, text, volume);
             }
             return;
         }

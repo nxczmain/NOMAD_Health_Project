@@ -33,6 +33,7 @@ let session;
 let crewKeys = [...CrewProfiles.demoKeys];
 let dailyPhotos = new Map();
 let crewPortrait;
+const crewThumbnails = new Map();
 let cameraScreen;
 let storageError = false;
 let toastTimer;
@@ -115,30 +116,31 @@ function home() {
   const cards = crewKeys.map(key => {
     try {
       const {profile} = readCrew(key);
-      const initials = profile.name.trim().split(/\s+/).slice(0, 2).map(part => Array.from(part)[0]).join('');
       return '<div class="crew-row"><button type="button" class="crew-option" data-action="enter-crew" data-id="'+escape(key)+'">'+
-        '<span class="crew-initials" aria-hidden="true">'+escape(initials)+'</span><span><strong>'+escape(profile.name)+'</strong><small>'+escape(profile.role)+
-        (CrewProfiles.isDemo(key) ? ' · Demo' : '')+'</small></span><span aria-hidden="true">→</span></button>'+
+        portrait(profile.name,validPhoto(crewThumbnails.get(key)))+'<span><strong>'+escape(profile.name)+'</strong><small>'+escape(profile.role)+
+        (CrewProfiles.isDemo(key) ? ' · Demo' : '')+'</small></span>'+UI.icon('arrow')+'</button>'+
         button('Delete','delete-crew','crew-delete compact','data-id="'+escape(key)+'" aria-label="Delete '+escape(profile.name)+'"')+'</div>';
     } catch {
       return '<p class="notice">Could not read a local profile.</p>';
     }
   }).join('');
-  return '<section class="crew-home"><div class="crew-picker"><h1>Choose your profile</h1><p class="muted">Select an astronaut to sign in.</p>'+
+  return '<section class="crew-home"><div class="crew-picker"><h1>Welcome to NETIN</h1><p class="muted">Choose the mission stage, then sign in to your crew profile.</p>'+
+    stageField('mission-stage',stageChoice)+
     (rosterReset ? '<p class="notice" role="status">Profiles reset. Each demo astronaut has 30 days of records.</p>' : '')+
-    '<div class="crew-options">'+cards+'</div>'+button('Create profile','new-profile')+'</div></section>';
+    '<div class="crew-options">'+cards+'</div>'+button('Create profile','new-profile','primary')+'</div>'+
+    '<figure class="earth-window"><figcaption><strong>Earth at sunrise</strong><a href="https://science.nasa.gov/earth/earth-observatory/sunrise-from-the-station-152259/">Photograph from the ISS · NASA</a></figcaption></figure></section>';
 }
 
 function cameraView() {
-  const {error, pendingPhoto, retake, working} = cameraScreen;
-  return pageHead('DAILY HEALTH LOG','Daily photo',escape(state.profile.name)+' · '+formatDay(E.dateKey()))+
-    '<section class="work-sheet photo-capture">'+(pendingPhoto ? '<img src="'+validPhoto(pendingPhoto)+'" alt="Photo preview">' :
-      error ? '' : '<video id="photo-video" autoplay muted playsinline aria-label="Camera preview"></video>')+
-    '<p id="photo-status" role="status">'+(error ? escape(error) : pendingPhoto ? (working ? 'Saving your photo…' : 'Review your new photo.') : 'Preparing your daily photo…')+'</p><div class="actions">'+
-    (pendingPhoto ? button('Use photo','use-camera','primary',working ? 'disabled' : '') : '')+
-    (error || pendingPhoto ? button(pendingPhoto ? 'Retake photo' : 'Retry camera','retry-camera',pendingPhoto ? '' : 'primary',working ? 'disabled' : '') : '')+
-    (retake ? button('Cancel','skip-camera','',working && pendingPhoto ? 'disabled' : '') :
-      button('Continue without photo','skip-camera')+button('Back to profiles','exit-crew'))+'</div></section>';
+  const {error,pendingPhoto,destination,working} = cameraScreen;
+  return pageHead('', 'Daily photo',escape(state.profile.name)+' · '+formatDay(E.dateKey()))+
+    '<section class="work-sheet photo-capture">'+(pendingPhoto ? '<div class="camera-frame"><img src="'+validPhoto(pendingPhoto)+'" alt="Photo preview"></div>' :
+      error ? '' : '<div class="camera-frame"><video id="photo-video" autoplay muted playsinline aria-label="Camera preview"></video>'+
+      '<span class="camera-guide" aria-hidden="true"></span><span id="camera-count" class="camera-count" hidden aria-hidden="true"></span></div>')+
+    '<p id="photo-status" role="status">'+(error ? escape(error) : pendingPhoto ? (working ? 'Saving your photo…' : 'Review your photo.') : 'Opening the camera…')+'</p><div class="actions">'+
+    (pendingPhoto ? button('Use photo','use-camera','primary',working ? 'disabled' : '')+button('Retake','retry-camera','',working ? 'disabled' : '') :
+      error ? button('Retry camera','retry-camera','primary') : button('Take photo','capture-camera','primary','disabled'))+
+    button(destination === 'routine' ? 'Continue without photo' : 'Back to Home','skip-camera','',working && pendingPhoto ? 'disabled' : '')+'</div></section>';
 }
 
 function showRoute(route, focus = 'main') {
@@ -155,7 +157,8 @@ function loginModal(key) {
   try { crew = readCrew(key); }
   catch { notify('The crew profile could not be opened.'); return; }
   const setup = !crew.auth;
-  openModal(setup ? 'Create your password' : 'Sign in','<form id="login-form" data-crew="'+escape(key)+'"><p>'+escape(crew.profile.name)+' · '+stages[stageChoice]+'</p>'+
+  openModal(setup ? 'Create your password' : 'Sign in','<form id="login-form" data-crew="'+escape(key)+'"><div class="sign-in-person">'+
+    portrait(crew.profile.name,validPhoto(crewThumbnails.get(key)),'large')+'<div><strong>'+escape(crew.profile.name)+'</strong>'+stageBadge(stageChoice)+'</div></div>'+
     passwordFields(setup)+'<p class="error" role="alert"></p><button class="button primary" type="submit">Sign in</button></form>');
   $('login-form').elements.password.focus();
 }
@@ -224,12 +227,19 @@ async function submitLogin(form) {
     state = crew;
     session = {key};
     chat = (state.conversations || []).slice(-80);
-    void openCamera('routine');
+    const owner = session;
+    await readCrewPhotos();
+    if (owner !== session) return;
+    if (dailyPhotos.has(E.dateKey()) && flow().photo !== 'done') markFlow('photo');
+    if (simulation() || dailyPhotos.has(E.dateKey()) || flow().check === 'urgent') showRoute('panel');
+    else void openCamera('routine');
   } catch (failure) { error.textContent = failure.message; }
   finally { delete form.dataset.pending; submit.disabled = false; }
 }
 
 function exitCrew() {
+  flushJournal(false);
+  clearTimeout(journalSummaryTimer);
   cameraScreen?.controller.abort();
   cameraScreen = undefined;
   session = undefined;
@@ -239,7 +249,14 @@ function exitCrew() {
   chat = [];
   chatMode = 'companion';
   healthTab = 'general';
-  regionChoice = {side:'front',region:'head'};
+  bodySide = 'front';
+  bodySelection.clear();
+  bodyEdit = undefined;
+  recordsFilter = {date:'',env:''};
+  trendRange = 7;
+  trendDay = '';
+  motorDate = '';
+  openedDocument = undefined;
   summaryPending = '';
   guideTopic = '';
   busy = false;
@@ -265,66 +282,84 @@ function speakReply(turn) {
   stopSpeech();
   const text = turn.paragraph || (turn.sections ? summaryParagraph(turn) : turn.content);
   voiceText = text.replace(/\[\d+\]/g,'').replace(/ +([.,])/g,'$1');
-  globalThis.chrome?.webview?.postMessage('netin-speak\n'+voiceRequest+'\n'+voiceText);
+  globalThis.chrome?.webview?.postMessage('netin-speak\n'+voiceRequest+'\n'+appearance.volume+'\n'+voiceText);
+}
+
+async function readCrewPhotos() {
+  const owner = session;
+  try {
+    const [saved,latest] = await Promise.all([CrewCamera.photos(owner.key,'',E.dateKey()),CrewCamera.latest(owner.key)]);
+    if (session !== owner) return;
+    dailyPhotos = new Map(saved.map(photo => [photo.date,photo]));
+    crewPortrait = latest;
+    if (latest) crewThumbnails.set(owner.key,latest);
+  } catch {
+    if (session === owner) notify('Stored photos could not be read.');
+  }
 }
 
 async function openCamera(destination, retake = false) {
-  if (!session || cameraScreen?.working) return;
+  if (!session) return;
   cameraScreen?.controller.abort();
-  const screen = {destination, retake, controller: new AbortController(), working: true, error: ''};
+  const screen = {destination,retake,controller:new AbortController(),working:true,error:''};
   cameraScreen = screen;
   const {signal} = screen.controller;
-  const crew = session.key;
-  const date = E.dateKey();
   showRoute('photo');
   try {
-    const [saved, latest] = await Promise.all([CrewCamera.photos(crew, '', date), CrewCamera.latest(crew)]);
+    const src = await CrewCamera.capture($('photo-video'),signal,() => new Promise((resolve,reject) => {
+      const aborted = () => reject(signal.reason);
+      signal.addEventListener('abort',aborted,{once:true});
+      const take = document.querySelector('[data-action="capture-camera"]');
+      screen.working = false;
+      screen.capture = () => {
+        screen.working = true;
+        take.disabled = true;
+        signal.removeEventListener('abort',aborted);
+        screen.capture = undefined;
+        resolve();
+      };
+      $('photo-status').textContent = 'Center your face in the guide, then choose Take photo.';
+      take.disabled = false;
+      take.focus();
+    }),seconds => {
+      const count = $('camera-count');
+      count.hidden = false;
+      count.textContent = seconds;
+      $('photo-status').textContent = 'Taking the photo in '+seconds+'…';
+    });
     if (signal.aborted) return;
-    dailyPhotos = new Map(saved.map(photo => [photo.date, photo]));
-    crewPortrait = latest;
-    if (retake || (!simulation() && !dailyPhotos.has(date))) {
-      const src = await CrewCamera.capture($('photo-video'), signal, seconds => {
-        $('photo-status').textContent = 'Look at the camera. Taking your photo in'+seconds+'…';
-      });
-      if (signal.aborted) return;
-      const captured = new Date();
-      const photo = {crew,date:E.dateKey(captured),env:state.env,capturedAt:captured.toISOString(),src};
-      if (retake) {
-        screen.pendingPhoto = photo;
-        screen.working = false;
-        render();
-        document.querySelector('[data-action="use-camera"]').focus();
-        return;
-      }
-      return await saveCameraPhoto(screen,photo);
-    }
-    finishCamera();
+    const captured = new Date();
+    screen.pendingPhoto = {crew:session.key,date:E.dateKey(captured),env:state.env,capturedAt:captured.toISOString(),src};
+    screen.working = false;
+    render();
+    document.querySelector('[data-action="use-camera"]')?.focus();
   } catch (error) {
     if (signal.aborted) return;
     screen.working = false;
-    screen.error = CrewCamera.message(error);
+    screen.error = 'Camera unavailable. You can try again later. '+CrewCamera.message(error);
     render();
-    document.querySelector('[data-action="retry-camera"]').focus();
+    document.querySelector('[data-action="retry-camera"]')?.focus();
   }
 }
 
 async function saveCameraPhoto(screen, photo) {
   screen.working = true;
   screen.error = '';
-  if (screen.retake) render();
+  render();
   try {
     const saved = await CrewCamera.save(photo,screen.retake);
     if (screen.controller.signal.aborted) return;
     dailyPhotos.set(saved.date,saved);
     if (!crewPortrait || saved.date >= crewPortrait.date) crewPortrait = saved;
+    crewThumbnails.set(session.key,crewPortrait);
     notify('Daily photo saved.');
     finishCamera();
   } catch {
     if (screen.controller.signal.aborted) return;
     screen.working = false;
-    screen.error = 'The photo could not be saved on this computer. Try again.';
+    screen.error = 'The photo could not be saved. Try again.';
     render();
-    document.querySelector('[data-action="'+(screen.pendingPhoto ? 'use-camera' : 'retry-camera')+'"]').focus();
+    document.querySelector('[data-action="use-camera"]')?.focus();
   }
 }
 
@@ -332,12 +367,9 @@ function finishCamera() {
   const {destination} = cameraScreen;
   cameraScreen.controller.abort();
   cameraScreen = undefined;
-  if (destination === 'routine') {
-    if (!markFlow('photo',dailyPhotos.has(E.dateKey()) ? 'done' : 'skipped')) return showRoute('panel');
-    return resumeFlow();
-  }
   if (dailyPhotos.has(E.dateKey())) markFlow('photo');
-  showRoute(destination);
+  if (destination === 'routine' && flow().check !== 'done') return openFlowStep('check');
+  showRoute(destination === 'routine' ? 'panel' : destination);
 }
 
 function validPhoto(image) {
@@ -495,7 +527,7 @@ function intakeSummary(entry, urgent) {
 
 function intakeTranscript(current, prompt) {
   const turns = [...current.turns,...(prompt ? [{role:'assistant',content:prompt.prompt}] : [])];
-  return turns.map(turn => '<article class="message '+turn.role+'"><span class="folio">'+(turn.role === 'user' ? 'You' : 'NETIN')+'</span><p>'+escape(turn.content)+'</p></article>').join('');
+  return turns.map(turn => '<article class="message '+turn.role+'"><div class="speaker">'+(turn.role === 'user' ? 'You' : UI.ham()+' Ham')+'</div><p>'+escape(turn.content)+'</p></article>').join('');
 }
 
 function intakeComposer(prompt) {
@@ -504,9 +536,10 @@ function intakeComposer(prompt) {
   const existing = (draft().values[prompt.key] != null ? E.format(draft().values[prompt.key]) : '');
   const answer = prompt.options ? '<div class="actions intake-options">'+Object.entries(prompt.options).map(([key,label]) =>
     button(label,'intake-option','','data-answer="'+key+'"'+disabled)).join('')+'</div>' :
-    field(prompt.metric ? metricNames[prompt.metric.key]+' ('+prompt.metric.unit+')' : 'Your answer',prompt.metric ? '<input name="answer" autocomplete="off" maxlength="60" value="'+escape(existing)+'"'+disabled+'>' :
+    field(prompt.metric ? metricNames[prompt.metric.key]+' ('+prompt.metric.unit+')' : 'Your answer',prompt.metric ? '<input name="answer" inputmode="'+(prompt.metric.key === 'pressure' ? 'text' : 'decimal')+'" autocomplete="off" maxlength="60" value="'+escape(existing)+'"'+disabled+'>' :
       '<textarea name="answer" rows="2" maxlength="'+(prompt.key === 'note' ? 1500 : 700)+'"'+disabled+'>'+escape(existing)+'</textarea>');
-  return '<form id="intake-form" class="intake-form">'+answer+(prompt.key === 'note' ?
+  const measure = prompt.metric ? '<div class="measure-question">'+UI.icon(prompt.metric.key)+'<strong>'+metricNames[prompt.metric.key]+'</strong></div>' : '';
+  return '<form id="intake-form" class="intake-form intake-card">'+measure+answer+(prompt.key === 'note' ?
     field('Photo (optional)','<input name="image" type="file" accept="image/jpeg,image/png,image/webp"'+disabled+'>')+preview(draft().image) : '')+
     '<div class="actions">'+(prompt.options ? '' : '<button class="button primary"'+disabled+'>Send</button>')+
     (prompt.key === 'symptoms' ? button('Nothing to report','intake-option','','data-answer="none"'+disabled) : '')+
@@ -548,7 +581,7 @@ function beginIntake() {
     const yesterday = E.weekly([],state.env,2)[0].date;
     const bodyConcern = bodyRecords().find(item => item.date === yesterday && item.symptom !== 'resolved');
     const recentConcern = state.records.find(entry => entry.date === yesterday && entry.details?.some(item => item.title === 'Symptoms'))?.details
-      .find(item => item.title === 'Symptoms')?.answer || (bodyConcern ? symptoms[bodyConcern.symptom]+' en '+regions[bodyConcern.region] : '');
+      .find(item => item.title === 'Symptoms')?.answer || (bodyConcern ? symptoms[bodyConcern.symptom]+' in '+regions[bodyConcern.region] : '');
     const previous = state.records.filter(entry => entry.date <= E.dateKey() && (simulation() || !entry.sample))
       .sort((a,b) => b.date.localeCompare(a.date))[0];
     const personal = {name:firstName(),recent:last ? {sleep:last.values.sleep,mood:last.values.mood} : null,
@@ -613,7 +646,7 @@ async function finishIntake(current = draft()) {
   if (!save({...state,drafts,records:hasData ? [...state.records.filter(item => item.env !== entry.env || item.date !== entry.date),entry] : state.records})) {
     if (urgent) {
       state = {...state,drafts,dailyFlow:{...flow(),date:E.dateKey(),check:'urgent'}};
-      const safetyTurn = {...reply,role:'assistant',mode:'check',content:reply.text,urgent:true};
+      const safetyTurn = {...reply,role:'assistant',mode:'check',content:reply.text,urgent:true,date:E.dateKey(),env:state.env};
       chat.push(...current.turns,safetyTurn);
       showRoute('bot');
       if (readAloud) speakReply(safetyTurn);
@@ -637,7 +670,7 @@ async function finishIntake(current = draft()) {
   if (session !== activeSession) return;
   const turn = {...(hasData ? reply : {}),role:'assistant',mode:'check',content:hasData ? reply.text : 'Check-in skipped.',measurements,urgent:!!urgent,urgentKind:urgent || undefined};
   const conversation = datedTurns([...transcript,turn]);
-  const persisted = save({...state,dailyFlow:{...flow(),date:E.dateKey(),check:urgent ? 'urgent' : hasData ? 'done' : 'skipped'},
+  const persisted = save({...state,urgentAlert:urgent ? conversation.at(-1) : state.urgentAlert,dailyFlow:{...flow(),date:E.dateKey(),check:urgent ? 'urgent' : hasData ? 'done' : 'skipped'},
     records:state.records.map(item => item === entry ? {...item,summary:reply} : item),
     conversations:[...(state.conversations || []),...conversation]});
   if (!persisted && !urgent) return;
@@ -713,19 +746,16 @@ function checkView() {
     '<h2 class="aside-break">Taking measurements</h2><details><summary>Measurement instructions</summary>'+E.metrics.map(metric => '<p><strong>'+metric.label+'</strong> '+metric.prompt+'</p>').join('')+'</details></aside></div>';
 }
 
+function sourcesView(sources) {
+  if (!sources?.length) return '';
+  return '<details class="citations"><summary>Sources ('+sources.length+')</summary>'+
+    sources.map(source => '<p><strong>'+escape(source.title)+'</strong> '+documentTarget(source)+'</p>').join('')+'</details>';
+}
+
 function replySections(turn) {
-  const citations = turn.sources?.length ? '<dd class="citations">'+turn.sources.map((source,index) =>
-    '<details><summary>Source'+(source.ref || index+1)+' · '+escape(source.title)+'</summary>'+
-    (source.text ? '<p>'+escape(source.text)+'</p>' : '')+
-    (source.url && /^https:\/\//i.test(source.url) ? '<p><a href="'+escape(source.url)+'" target="_blank" rel="noopener noreferrer">Open original source</a></p>' : '')+'</details>'
-  ).join('')+'</dd>' : '';
   const fields = AI.titles(turn.sections);
-  const visible = fields.filter(([key]) => !['measurements','indicators','risks'].includes(key));
-  const details = fields.filter(([key]) => ['measurements','indicators','risks'].includes(key));
-  return '<dl class="reply-sections">'+visible.map(([key,title]) =>
-    '<dt>'+title+'</dt><dd>'+escape(turn.sections[key])+'</dd>'+(key === 'evidence' ? citations : '')
-  ).join('')+'</dl>'+(details.length ? '<details class="medical-details"><summary>Measurements, indicators and risks</summary><dl class="reply-sections">'+
-    details.map(([key,title]) => '<dt>'+title+'</dt><dd>'+escape(turn.sections[key])+'</dd>').join('')+'</dl></details>' : '');
+  return '<dl class="reply-sections">'+fields.map(([key,title]) =>
+    '<dt>'+title+'</dt><dd>'+escape(turn.sections[key])+'</dd>').join('')+'</dl>'+sourcesView(turn.sources);
 }
 
 function summaryParagraph(value) {
@@ -735,11 +765,12 @@ function summaryParagraph(value) {
 }
 
 function paragraphReply(value) {
-  const sources = value.sources || [];
-  return '<p'+(value.urgent ? ' class="notice critical" role="alert"' : '')+'>'+escape(summaryParagraph(value))+'</p>'+
-    (sources.length ? '<details class="citations"><summary>Sources</summary>'+sources.map(source =>
-      '<p>'+(/^https:\/\//i.test(source.url || '') ? '<a href="'+escape(source.url)+'" target="_blank" rel="noopener noreferrer">'+escape(source.title)+'</a>' : escape(source.title))+'</p>'
-    ).join('')+'</details>' : '')+
+  const actions = value.related?.length ? '<div class="actions">'+value.related.map((source,index) =>
+    documentTarget({...source, action:index === 0 ? 'Open relevant passage' : source.title})).join('')+'</div>' :
+    value.related ? '<div>'+link('Open Documents','guias','compact')+'</div>' : '';
+  if (value.sections && !value.urgent) return replySections(value)+actions;
+  return '<p'+(value.urgent ? ' class="notice critical"' : '')+'>'+escape(summaryParagraph(value))+'</p>'+
+    sourcesView(value.sources)+actions+
     (value.handoff ? '<p class="micro">Report to responders: “'+escape(value.handoff)+'”</p>' : '');
 }
 
@@ -747,9 +778,9 @@ function motorHistory() {
   return state.motorLogs ?? [];
 }
 
-function motorTable(days) {
+function motorTable(days, env = state.env) {
   const dates = new Set(days.map(day => day.date));
-  const rows = motorHistory().filter(day => dates.has(day.date)).sort((a,b) => b.date.localeCompare(a.date));
+  const rows = motorHistory().filter(day => dates.has(day.date) && day.env === env).sort((a,b) => b.date.localeCompare(a.date));
   if (!rows.length) return '<p class="muted">No motor rounds were saved in this period.</p>';
   return '<div class="table-scroll"><table><thead><tr><th scope="col">Date</th><th scope="col">Environment</th>'+
     '<th scope="col">Game</th><th scope="col">Measurements</th><th scope="col">Misses</th>'+
@@ -762,14 +793,18 @@ function motorTable(days) {
 
 function motorSummary(result) {
   const baseline = Motor.baseline(result,motorHistory());
-  const measurements = Motor.games[Motor.gameOf(result)].metrics;
+  const game = Motor.gameOf(result);
+  const measurements = Motor.games[game].metrics;
+  const skill = {dock:'This test records visual reaction and hand–eye coordination.',
+    cargo:'This test records controlled pointer movement and placement accuracy.',
+    taps:'This test records the timing and accuracy of alternating taps.'}[game];
   return '<p class="micro">'+E.environments[result.env].name+' · '+Motor.hands[result.hand]+' · '+Motor.inputs[result.input]+'</p>'+
     '<dl class="motor-readings">'+measurements.map(([key,label,unit]) =>
     '<div><dt>'+label+'</dt><dd>'+Motor.value(result,key)+' <small>'+unit+'</small></dd>'+
     (baseline ? '<dd class="micro">Usual '+baseline[key]+' '+unit+'</dd>' : '')+'</div>').join('')+'</dl>'+
-    '<p>'+result.misses+' misses'+(result.early != null ? ' · '+result.early+' early taps' : '')+'</p>'+
+    '<p>'+skill+'</p><p>'+result.misses+' misses'+(result.early != null ? ' · '+result.early+' early taps' : '')+'</p>'+
     '<p class="muted">'+(baseline ? 'Usual values are medians from '+baseline.count+' matching previous days. If a change persists, share the log with the crew medical officer.' :
-      'Your usual values will appear after 3 previous days with the same hand, input, board size and environment.')+'</p>';
+      'Your usual values will appear after 3 previous days with the same hand, input, board size, environment and cue.')+'</p>';
 }
 
 function motorView() {
@@ -795,7 +830,7 @@ function motorView() {
     '<aside class="side-sheet"><h2>Compare your results</h2><p class="muted">Use the same hand and device each day. NETIN logs your first result for each test.</p>'+
     '<p class="muted">The result measures your performance in the test.'+
     (simulation() ? ' Demo profile results are labeled as simulation.' : '')+'</p></aside></div>'+
-    '<section class="work-sheet report-notes motor-log"><h2>Motor log · Last 30 days</h2>'+motorTable(E.weekly([],state.env,30))+'</section>';
+    '<section class="work-sheet report-notes motor-log"><h2>Motor log</h2>'+motorHistoryFilter()+'</section>';
 }
 
 function startMotorRound(hand) {
@@ -819,7 +854,7 @@ function startMotorRound(hand) {
     }
     render();
     $('motor-form').querySelector('button').focus({preventScroll:true});
-  },stopMotorRound);
+  },stopMotorRound,{volume:appearance.volume});
 }
 
 function stopMotorRound(message) {
@@ -868,17 +903,21 @@ function reportView() {
 
 function render() {
   const route = view();
+  if (route !== 'journal' && journalDraft) flushJournal(true);
   if (route !== 'motor' && motorRound) {
     motorRound.cancel?.();
     motorRound = undefined;
   }
-  const workspace = route !== 'home' && route !== 'camera';
+  const workspace = !!session;
+  document.documentElement.dataset.stage = workspace ? state.env : stageChoice;
   $('sidebar').hidden = !workspace;
-  $('mission-stage').innerHTML = stageOptions(stageChoice);
-  $('mission-stage').disabled = !!(cameraScreen || busy || summaryPending || motorRound);
+  $('brand').innerHTML = workspace ? '' : UI.icon('orbit')+' NETIN';
+  $('mast-stage').innerHTML = workspace ? stageBadge(state.env) : '';
   if (workspace) {
-    const active = {motor:'health',journal:'panel',check:'bot',semana:'records'}[route] || route;
-    const navigation = items => items.map(([key,label]) => '<a href="#'+key+'"'+(key === active ? ' aria-current="page"' : '')+'>'+label+'</a>').join('');
+    const active = {motor:'health',journal:'panel',check:'bot',semana:'records',camera:'panel'}[route] || route;
+    const icons = {panel:'home',bot:'bot',health:'health',records:'records',guias:'guias',settings:'settings'};
+    const navigation = items => items.map(([key,label]) => '<a href="#'+key+'" title="'+label+'"'+(key === active ? ' aria-current="page"' : '')+'>'+UI.icon(icons[key])+'<span>'+label+'</span></a>').join('');
+    $('sidebar-brand').innerHTML = UI.icon('orbit')+' NETIN';
     $('sidebar-crew').innerHTML = portrait(state.profile.name,validPhoto(crewPortrait))+'<div><strong>'+escape(state.profile.name)+
       '</strong><small>'+escape(state.profile.role)+'</small></div>';
     $('nav').innerHTML = navigation(routes);
@@ -890,6 +929,7 @@ function render() {
   const log = $('chat-log');
   if (log) log.scrollTop = log.scrollHeight;
 }
+
 function openModal(title, body) {
   const modal = $('modal');
   modal.innerHTML = '<header class="section-head"><h2 id="modal-title">'+title+'</h2>'+button('Close','close')+'</header>'+body;
@@ -903,8 +943,14 @@ function passwordFields(setup) {
 }
 function medicalSuppliesModal(item) {
   const items = (state.medicalSupplies || []).filter(entry => entry.env === state.env);
-  const list = items.map(entry => '<tr><th scope="row">'+escape(entry.name)+'</th><td>'+escape(entry.quantity)+'</td><td>'+
-    escape(entry.expires || '—')+'</td><td>'+button('Edit','edit-medical-supply','','data-id="'+escape(entry.id)+'" aria-label="Edit '+escape(entry.name)+'"')+'</td></tr>').join('');
+  const list = items.map(entry => {
+    const captions = [...(entry.quantity === 0 ? ['Out of stock'] : []),
+      ...(!entry.expires ? ['Expiration not recorded'] : entry.expires < E.dateKey() ? ['Expired'] : [])];
+    const statuses = captions.length ? captions.map(label => '<span class="state-pill review">'+UI.icon('alert')+label+'</span>').join(' ') :
+      '<span class="state-pill done">'+UI.icon('done')+'In stock</span>';
+    return '<tr><th scope="row">'+escape(entry.name)+'</th><td>'+escape(entry.quantity)+'</td><td>'+
+      escape(entry.expires || '—')+'</td><td>'+statuses+'</td><td>'+button('Edit','edit-medical-supply','','data-id="'+escape(entry.id)+'" aria-label="Edit '+escape(entry.name)+'"')+'</td></tr>';
+  }).join('');
   const form = '<form id="medical-supplies-form" data-id="'+escape(item?.id)+'">'+
     field('Supply name','<input name="supply" maxlength="80" value="'+escape(item?.name)+'" required>')+
     field('Units available','<input name="quantity" type="number" min="0" max="999999" step="1" value="'+escape(item?.quantity)+'" required>')+
@@ -912,17 +958,39 @@ function medicalSuppliesModal(item) {
     '<div class="actions"><button class="button primary" type="submit">'+(item ? 'Save changes' : 'Add supply')+'</button>'+
     (item ? button('Remove supply','remove-medical-supply','','data-id="'+escape(item.id)+'"') : '')+'</div></form>';
   const body = '<p class="muted">'+environment().name+' · Supplies reported by this astronaut.</p>'+
-    (list ? '<div class="table-scroll"><table><thead><tr><th>Supply</th><th>Units</th><th>Expiration</th><th></th></tr></thead><tbody>'+list+'</tbody></table></div>' :
+    (list ? '<div class="table-scroll"><table><thead><tr><th>Item</th><th>Quantity</th><th>Expiration date</th><th>Status</th><th>Action</th></tr></thead><tbody>'+list+'</tbody></table></div>' :
       '<p class="muted">No supplies recorded for this environment.</p>')+form;
   if ($('modal').open) $('modal').close();
   openModal('Medical supplies',body);
 }
 function profileModal(create = false) {
   const profile = create ? {role:'Mission specialist'} : state.profile;
-  openModal(create ? 'Create profile' : 'Crew profile','<form id="profile-form">'+[['name','Name'],['role','Role'],['medical','Crew medical officer'],['history','Health history'],['allergies','Allergies']].map(([key,label]) =>
-    field(label,'<input name="'+key+'" maxlength="'+(key === 'name' || key === 'role' ? '80' : '350')+'" value="'+escape(profile[key])+'" '+(['name','role'].includes(key) ? 'required' : '')+'>')).join('')+
-    (create ? passwordFields(true)+'<p class="error" role="alert"></p>' : '')+
-    '<button class="button primary" type="submit">'+(create ? 'Create profile' : 'Save profile')+'</button></form>');
+  const fields = keys => keys.map(([key,label]) =>
+    field(label,'<input name="'+key+'" maxlength="'+(key === 'name' || key === 'role' ? '80' : '350')+'" value="'+escape(profile[key])+'" '+(['name','role'].includes(key) ? 'required' : '')+'>')).join('');
+  const identity = fields([['name','Name'],['role','Role or rank']]);
+  const medical = fields([['medical','Crew medical officer'],['history','Medical history'],['allergies','Allergies']]);
+  openModal(create ? 'Create profile' : 'Crew profile','<form id="profile-form">'+(create ?
+    '<section id="profile-identity"><h3>1. Crew identity</h3>'+identity+button('Continue','profile-next','primary')+'</section>'+
+    '<section id="profile-access" hidden><h3>2. Profile password</h3>'+passwordFields(true)+
+      '<p class="muted">You can add medical details after signing in.</p><p class="error" role="alert"></p><div class="actions">'+
+      button('Back','profile-back')+'<button class="button primary" type="submit">Create profile</button></div></section>' :
+    identity+medical+field('Mission start date (optional)','<input name="missionStartDate" type="date" value="'+escape(profile.missionStartDate)+'">'+
+    '')+'<button class="button primary" type="submit">Save profile</button>')+'</form>');
+  if (create) {
+    $('profile-form').elements.password.disabled = true;
+    $('profile-form').elements.confirmation.disabled = true;
+  }
+  $('profile-form').elements.name.focus();
+}
+function profileStep(access) {
+  const form = $('profile-form');
+  if (!form?.elements.confirmation) return;
+  if (access && (!form.elements.name.reportValidity() || !form.elements.role.reportValidity())) return;
+  $('profile-identity').hidden = access;
+  $('profile-access').hidden = !access;
+  form.elements.password.disabled = !access;
+  form.elements.confirmation.disabled = !access;
+  form.elements[access ? 'password' : 'name'].focus();
 }
 async function compressImage(file) {
   if (!['image/jpeg','image/png','image/webp'].includes(file.type) || file.size > 12*1024*1024) throw new Error('Choose a JPEG, PNG or WebP image up to 12 MB.');
@@ -1006,7 +1074,7 @@ async function checkModel() {
   catch { result = 'offline'; }
   if (session !== currentSession) return;
   model = result;
-  if (view() === 'bot') render();
+  if (['bot','settings'].includes(view())) render();
 }
 async function sendMessage(query, mode = 'chat', searchContext = '') {
   if (!session || !query || busy || summaryPending) return;
@@ -1035,9 +1103,8 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
   } else if (nextEnv) {
     let text = E.environments[nextEnv].name+' is already the active environment.';
     if (nextEnv !== state.env) {
-      text = setStage(nextEnv) ?
-        'Mission stage updated to '+environment().name+' for all crew profiles.' :
-        'The environment change could not be saved.';
+      text = 'Review the mission stage change before applying it.';
+      confirmStage(nextEnv);
       selectedDay = null;
     }
     chat.push({role:'assistant',content:text});
@@ -1070,9 +1137,14 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
       if (turn.modelTurn || turn.companion) model = 'ready';
     } catch (error) {
       if (session === currentSession) {
-        const reply = review ? localReview(mode,error.message) : mode === 'chat' && chatMode === 'companion' && !intent.health ?
-          'Qwen is unavailable. You can still record your check-in.' : error.message;
-        chat.push({role:'assistant',content:reply?.text || reply,sections:reply?.sections});
+        if (missionIndexing) await missionIndexing;
+        if (session !== currentSession) return;
+        const related = AI.findPassages(query,history,library,searchContext,environment().name);
+        const text = review ? summaryParagraph(localReview(mode,'Ham is unavailable.')) :
+          related.length ? 'Ham could not respond. These passages match your question.' :
+          library.length ? 'Ham could not respond, and no related passage was found.' :
+          'Ham could not respond. Load mission documents to find relevant passages.';
+        chat.push({role:'assistant',content:text,related});
       }
     } finally { if (session === currentSession) busy = false; }
   }
@@ -1080,13 +1152,14 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
     const [reply] = datedTurns([{...chat.at(-1),mode,date:turn.date,env:turn.env}]);
     chat[chat.length-1] = reply;
     const dailyFlow = urgent ? {...flow(),date:E.dateKey(),check:'urgent'} : state.dailyFlow;
-    if (!save({...state,dailyFlow,conversations:[...(state.conversations || []),reply]}) && urgent) state = {...state,dailyFlow};
+    if (!save({...state,dailyFlow,urgentAlert:urgent ? reply : state.urgentAlert,conversations:[...(state.conversations || []),reply]}) && urgent) state = {...state,dailyFlow};
   }
   if (session === currentSession && view() === 'bot') {
     render();
     $('chat-form')?.elements.query.focus();
     if (readAloud) speakReply(chat.at(-1));
   }
+  if (session === currentSession && urgent && view() !== 'bot') showRoute('bot');
   if (session === currentSession && kind) addEmergencyHandoff(query,kind,chat.at(-1),currentSession);
 }
 
@@ -1122,7 +1195,7 @@ function exportReport(weekly) {
   const entries = weekly ? reportDays() : [{date:today().date,entry:today()}];
   const title = weekly ? (reportLength === 7 ? 'Weekly' : '30-day')+' crew health log' : 'Crew medical summary';
   const markup = '<!doctype html><html lang="en"><meta charset="utf-8"><title>'+title+'</title><style>body{max-width:860px;margin:35px auto;padding:0 20px;font:16px/1.5 system-ui;color:#152c33}article{border-top:1px solid #a5b4b1;margin-top:26px}dt{font-weight:bold}img{max-width:100%;height:auto}</style><h1>'+
-    title+'</h1><p>NETIN / Demonstration data / '+environment().name+'</p><p>Crew member: '+escape(state.profile.name)+'<br>Crew medical officer: '+escape(state.profile.medical)+
+    title+'</h1><p>NETIN / '+(entries.some(({entry}) => entry?.sample) ? 'Includes demonstration data / ' : '')+environment().name+'</p><p>Crew member: '+escape(state.profile.name)+'<br>Crew medical officer: '+escape(state.profile.medical)+
     '<br>History: '+escape(state.profile.history)+'<br>Allergies: '+escape(state.profile.allergies)+'</p>'+
     (weekly ? '<h2>Log conclusion</h2>'+logConclusion(reportLength) : '')+
     entries.map(({date,entry}) => '<article><h2>'+formatDay(date)+'</h2>'+(entry ? assessment(entry)+'<ul>'+
@@ -1135,7 +1208,11 @@ function exportReport(weekly) {
 }
 
 window.addEventListener('hashchange',() => {
-  if (!session || cameraScreen) return;
+  if (!session) return;
+  if (cameraScreen) {
+    cameraScreen.controller.abort();
+    cameraScreen = undefined;
+  }
   if (view() !== 'bot') stopSpeech();
   render();
   window.scrollTo({top:0,behavior:'instant'});
@@ -1148,6 +1225,8 @@ document.addEventListener('click',(event) => {
   if (action === 'enter-crew') return loginModal(control.dataset.id);
   if (action === 'delete-crew') return deleteCrewModal(control.dataset.id);
   if (action === 'exit-crew') return exitCrew();
+  if (action === 'profile-next' || action === 'profile-back') return profileStep(action === 'profile-next');
+  if (action === 'capture-camera') return cameraScreen?.capture?.();
   if (action === 'new-profile') return profileModal(true);
   if (session && workspaceClick(control)) return;
   if (action === 'medical-supplies') return medicalSuppliesModal();
@@ -1166,7 +1245,7 @@ document.addEventListener('click',(event) => {
     render();
     return document.querySelector('[data-action="motor-game"][aria-pressed="true"]').focus();
   }
-  if (action === 'daily-camera') return void openCamera(view(),true);
+  if (action === 'daily-camera') return void openCamera('panel',dailyPhotos.has(E.dateKey()));
   if (action === 'retry-camera') return void openCamera(cameraScreen.destination,cameraScreen.retake);
   if (action === 'use-camera' && !cameraScreen.working) return void saveCameraPhoto(cameraScreen,cameraScreen.pendingPhoto);
   if (action === 'skip-camera') return finishCamera();
@@ -1228,26 +1307,45 @@ document.addEventListener('click',(event) => {
     }
   }
 });
-document.addEventListener('change',(event) => {
-  if (event.target.id === 'mission-stage') {
-    setStage(event.target.value);
-    render();
-    $('mission-stage').focus();
+document.addEventListener('input',(event) => {
+  const control = event.target;
+  if (control.form?.id === 'journal-form') queueJournal(control);
+  if (control.form?.id === 'body-form') {
+    const fields = control.form.elements;
+    bodyEdit = {symptom:fields.symptom.value,intensity:fields.intensity.value,notes:fields.notes.value};
+    $('intensity-value').textContent = bodyEdit.intensity+' / 10';
   }
-  if (event.target.id === 'markdown-files') void importSelectedMarkdown(Array.from(event.target.files));
-  if (event.target.id === 'trend-metric' && Object.hasOwn(metricNames,event.target.value)) {
-    trendMetric = event.target.value;
+  if (control.dataset.preference === 'volume') $('volume-value').value = control.value+'%';
+});
+document.addEventListener('change',(event) => {
+  const control = event.target;
+  if (control.id === 'mission-stage') {
+    setStage(control.value);
+    render();
+    $('mission-stage')?.focus();
+  }
+  if (control.dataset.preference) saveAppearance(control);
+  if (control.id === 'region-search') {
+    const region = Object.keys(regions).find(key => regionLabel(bodySide,key).toLowerCase() === control.value.trim().toLowerCase());
+    if (region && !bodySelection.has(regionKey({side:bodySide,region}))) {
+      toggleRegion(bodySide,region);
+      $('region-search').focus();
+    }
+  }
+  if (control.id === 'markdown-files') void importSelectedMarkdown(Array.from(control.files));
+  if (control.id === 'trend-metric' && Object.hasOwn(metricNames,control.value)) {
+    trendMetric = control.value;
     render();
     $('trend-metric').focus();
   }
-  if (event.target.form?.id === 'check-form' && E.steps[draft()?.index]?.key === 'impact') {
-    event.target.form.querySelector('.error').textContent = event.target.value === 'urgent' ? E.medicalHelp : '';
+  if (control.form?.id === 'check-form' && E.steps[draft()?.index]?.key === 'impact') {
+    control.form.querySelector('.error').textContent = control.value === 'urgent' ? E.medicalHelp : '';
   }
 });
 document.addEventListener('submit',async (event) => {
   event.preventDefault();
   const form = event.target;
-  if (['stage-form','body-form','journal-form','document-search'].includes(form.id)) return workspaceSubmit(form);
+  if (['stage-form','stage-confirm-form','body-form','journal-form','document-search','records-filter','motor-filter'].includes(form.id)) return workspaceSubmit(form);
   if (form.id === 'medical-supplies-form') {
     const items = state.medicalSupplies || [];
     const name = form.elements.supply.value.trim();
@@ -1272,10 +1370,12 @@ document.addEventListener('submit',async (event) => {
     return sendMessage('Summarize the protocol or evidence about '+topic+'. Cover measurement instructions, indicators, risks, precautions, treatment steps for the medical officer to review, and which environment the evidence applies to. Mark details the sources do not support.','guide',topic);
   }
   if (form.id === 'profile-form') {
-    const profile = Object.fromEntries(['name','role','medical','history','allergies'].map(key => [key,form.elements[key].value.trim()]));
+    const profile = Object.fromEntries(['name','role','medical','history','allergies'].map(key => [key,form.elements[key]?.value.trim() || '']));
+    if (session) profile.missionStartDate = form.elements.missionStartDate.value;
     if (!profile.name || !profile.role) return notify('Complete the crew member and role fields.');
     if (!session) {
       if (form.dataset.pending) return;
+      if (form.elements.password.disabled) return profileStep(true);
       const submit = form.querySelector('[type="submit"]');
       form.dataset.pending = 'true';
       submit.disabled = true;
@@ -1283,7 +1383,7 @@ document.addEventListener('submit',async (event) => {
       try {
         const auth = await CrewProfiles.createPassword(form.elements.password.value,form.elements.confirmation.value);
         if (!form.isConnected || !$('modal').open || session) return;
-        localStorage.setItem(key,JSON.stringify({...E.initialState(),profile,auth,records:[]}));
+        localStorage.setItem(key,JSON.stringify({...E.initialState(),profile,auth,records:[],createdDate:E.dateKey()}));
         try { localStorage.setItem(rosterKey,JSON.stringify([...crewKeys.filter(isCrewKey),key])); }
         catch (failure) { localStorage.removeItem(key); throw failure; }
       } catch (error) { form.querySelector('.error').textContent = error.message; return; }
@@ -1306,10 +1406,11 @@ globalThis.chrome?.webview?.addEventListener('message', ({data}) => {
   if (!voice) return notify(message);
   const reply = new SpeechSynthesisUtterance(voiceText);
   reply.voice = voice;
+  reply.volume = appearance.volume / 100;
   reply.onerror = () => { if (data.id === voiceRequest) notify(message); };
   speechSynthesis.speak(reply);
 });
-window.addEventListener('pagehide', () => cameraScreen?.controller.abort());
+window.addEventListener('pagehide', () => { flushJournal(false); cameraScreen?.controller.abort(); });
 $('modal').addEventListener('close', event => {
   if (!event.target.open) event.target.replaceChildren();
 });
@@ -1326,6 +1427,13 @@ async function start() {
     }
   }
   try {
+    const preferences = JSON.parse(localStorage.getItem('netin-appearance-v1'));
+    if (preferences) {
+      if (['light','dark'].includes(preferences.theme)) appearance.theme = preferences.theme;
+      if (['standard','large','larger'].includes(preferences.text)) appearance.text = preferences.text;
+      if (Number.isInteger(preferences.volume) && preferences.volume >= 0 && preferences.volume <= 100) appearance.volume = preferences.volume;
+    }
+    applyAppearance();
     const storedStage = localStorage.getItem(missionStageKey);
     if (Object.hasOwn(stages,storedStage)) stageChoice = storedStage;
     const removed = JSON.parse(localStorage.getItem(deletedCrewKey));
@@ -1344,6 +1452,9 @@ async function start() {
       if (!session) render();
     }).catch(() => {});
   }
+  const thumbnails = await Promise.all(crewKeys.map(async key => [key,await CrewCamera.latest(key).catch(() => null)]));
+  thumbnails.forEach(([key,photo]) => { if (photo) crewThumbnails.set(key,photo); });
+  if (!session && !$('modal').open) render();
   void loadMarkdown();
 }
 void start();

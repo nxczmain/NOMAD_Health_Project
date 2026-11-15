@@ -69,7 +69,7 @@ const CrewCamera = (() => {
     });
   }
 
-  async function capture(video, signal, countdown) {
+  async function capture(video, signal, ready, countdown) {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera access is unavailable. Open NETIN.exe to use the camera.');
     const camera = navigator.mediaDevices.getUserMedia({
       video: {facingMode: {ideal: 'user'}, width: {ideal: 720}, height: {ideal: 720}},
@@ -94,6 +94,7 @@ const CrewCamera = (() => {
       video.srcObject = stream;
       void video.play().catch(() => {});
       while (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth) await wait(60, deadline);
+      await ready();
       for (let seconds = 3; seconds > 0; seconds--) {
         countdown(seconds);
         await wait(1000, signal);

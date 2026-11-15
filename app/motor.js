@@ -24,7 +24,7 @@ const NetinMotor = (() => {
   function baseline(result, history) {
     const days = history.filter(day => day.date < result.date && day.env === result.env &&
       day.input === result.input && day.hand === result.hand && day.layout === result.layout &&
-      gameOf(day) === gameOf(result) && day.sample === result.sample).sort((a,b) => b.date.localeCompare(a.date)).slice(0,7);
+      gameOf(day) === gameOf(result) && day.sample === result.sample && (day.cue || 'visual') === (result.cue || 'visual')).sort((a,b) => b.date.localeCompare(a.date)).slice(0,7);
     if (days.length < 3) return null;
     return {count:days.length,...Object.fromEntries(games[gameOf(result)].metrics.map(([key]) =>
       [key,median(days.map(day => value(day,key)))]))};
@@ -54,7 +54,28 @@ const NetinMotor = (() => {
     });
   }
 
-  function drill(board, status, finish, stop) {
+  function drill(board, status, finish, stop, options = {}) {
+    let audio;
+    try {
+      if (options.volume && typeof AudioContext !== 'undefined') {
+        audio = new AudioContext();
+        void audio.resume().catch(() => {});
+      }
+    } catch { audio = undefined; }
+    let audible = false;
+    function playCue() {
+      if (audio?.state !== 'running') return;
+      const start = audio.currentTime;
+      const tone = audio.createOscillator();
+      const gain = audio.createGain();
+      tone.frequency.value = 720;
+      gain.gain.setValueAtTime(.15 * options.volume / 100,start);
+      gain.gain.exponentialRampToValueAtTime(.0001,start+.11);
+      tone.connect(gain).connect(audio.destination);
+      tone.start(start);
+      tone.stop(start+.12);
+      audible = true;
+    }
     const controller = new AbortController();
     const {signal} = controller;
     const reactionTimes = [];
@@ -76,6 +97,7 @@ const NetinMotor = (() => {
     let misses = 0;
 
     function cancel() {
+      if (audio && audio.state !== 'closed') void audio.close().catch(() => {});
       controller.abort();
       clearTimeout(timer);
       cancelAnimationFrame(frame);
@@ -98,6 +120,7 @@ const NetinMotor = (() => {
           if (signal.aborted) return;
           started = performance.now();
           phase = next;
+          if (next === 'reaction') playCue();
           timer = setTimeout(() => abandon('The response window expired. Start a new round when ready.'),10000);
         });
       });
@@ -106,8 +129,8 @@ const NetinMotor = (() => {
     function reaction() {
       phase = 'waiting';
       cue?.classList.remove('active');
-      status.textContent = 'Signal '+(reactionTimes.length + 1)+' of '+reactionTrials+' · Wait for the center beacon.';
-      timer = setTimeout(() => light(center,'Signal '+(reactionTimes.length + 1)+' of '+reactionTrials+' · Tap the center beacon!','reaction'),
+      status.textContent = 'Signal '+(reactionTimes.length + 1)+' of '+reactionTrials+' · Wait for the center beacon. Early taps: '+early+'.';
+      timer = setTimeout(() => light(center,'Signal '+(reactionTimes.length + 1)+' of '+reactionTrials+' · Tap the center beacon! Early taps: '+early+'.','reaction'),
         900 + Math.random() * 1500);
     }
 
@@ -126,7 +149,7 @@ const NetinMotor = (() => {
         input = event.pointerType;
         clearTimeout(timer);
         reaction();
-        status.textContent = 'Early tap · Wait until the center beacon lights up.';
+        status.textContent = 'Early tap '+early+' · Wait until the center beacon lights up.';
         return;
       }
       if (phase === 'prepare') {
@@ -139,6 +162,7 @@ const NetinMotor = (() => {
       input = event.pointerType;
       if (target !== cue) {
         misses++;
+        status.textContent = 'Docking target '+(targetTimes.length+1)+' of '+path.length+' · Misses: '+misses;
         return;
       }
       clearTimeout(timer);
@@ -154,7 +178,7 @@ const NetinMotor = (() => {
       targetTimes.push(elapsed);
       if (targetTimes.length < path.length) return aim();
       cancel();
-      finish({reaction:median(reactionTimes),aiming:median(targetTimes),misses,early,input,layout});
+      finish({reaction:median(reactionTimes),aiming:median(targetTimes),misses,early,input,layout,cue:audible ? 'sound-and-visual' : 'visual'});
     }
 
     board.addEventListener('pointerdown',respond,{signal});

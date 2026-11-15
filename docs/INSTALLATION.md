@@ -22,22 +22,22 @@ This guide runs NETIN from a folder on your own Windows PC. The [GitHub download
 
    Wait for the download to finish. Confirm that `qwen3:4b` appears in the list. Leave Ollama running in the background. If it is already installed and the model is listed, proceed directly to the next step.
 3. Open `NETIN.exe` from the extracted folder. Keep the `interface` folder and the WebView2 DLLs next to it. NETIN connects to Ollama automatically on `http://127.0.0.1:11434`. No key or cloud account is needed.
-4. In the upper-left mission selector, choose **Orbit** for Maya or **Moon** for Mateo. A change applies to the whole crew on this installation. Then pick the astronaut and enter its demo password.
+4. In the welcome screen, choose **Earth Orbit** for Maya or **Moon** for Mateo. Then pick the astronaut and enter the demo password. After signing in, **Home → Change stage** lets you review and confirm a change for the whole crew on this installation.
 
    | Demo astronaut | Historical stage | Password |
    | --- | --- | --- |
-   | Maya Chen | Orbit | `OrbitDemo26` |
+   | Maya Chen | Earth Orbit | `OrbitDemo26` |
    | Mateo Ruiz | Moon | `LunarDemo26` |
 
-5. Follow the daily check-in or choose **Save and finish** to continue to the other views. Demo profiles skip automatic photo capture. For a new profile, **Continue without photo** works if a camera is unavailable.
-6. In **Settings → Check connection**, look for **Qwen is ready**. In **Documents → Load Markdown folder**, select `ReferenceLibrary` from the extracted ZIP. This loads the included public demo references. Select your mission's authorized Markdown folder to evaluate with a different library.
+5. Open **Daily check-in** from the Home routine. Choose **Save and finish** to save what you have recorded. If you try the **Daily photo** step, select **Take photo** to start the countdown. Select **Use photo** to save the preview or **Retake** to try again. You can continue when a camera is unavailable.
+6. In **Settings → Check connection**, look for **Qwen is ready**. The public demo references are already available in **Documents** on a fresh installation. Use **Load Markdown folder** to use your mission's authorized library or reload the included `ReferenceLibrary` folder.
 
 ## A short evaluation
 
 | What to try | Where to look |
 | --- | --- |
 | Finish the daily check-in and describe any change | **Assistant** creates a paragraph and **Home** keeps it with readings and relevant follow-ups |
-| Write a journal entry with two or three distinct details | **Home → Journal** shows NETIN's recap after **Save with NETIN** |
+| Write a journal entry with two or three distinct details | **Home → Journal** saves automatically and shows Ham's summary when available |
 | Ask “How can an irregular sleep schedule affect my ability to work?” | **Assistant** uses Qwen and cites the relevant sleep and fatigue reference |
 | Send the drill “My crewmate is unresponsive but breathing. What should I do?” | **Assistant** displays an immediate alert and Qwen can extract the reported observation for the handoff |
 | Open earlier readings, symptom history and skills | **Health** and **Records** show the demo trend and 30 days of sample check-ins, journal entries and motor results |

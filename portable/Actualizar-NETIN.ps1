@@ -29,7 +29,7 @@ if (!(Test-Path -LiteralPath (Join-Path $install.FullName 'NETIN-Portable.flag')
     throw 'La carpeta de destino debe ser una instalacion portable de NETIN.'
 }
 $appFiles = @('NETIN.exe', 'Microsoft.Web.WebView2.Core.dll', 'Microsoft.Web.WebView2.WinForms.dll', 'WebView2Loader.dll')
-$interfaceFiles = @('index.html', 'style.css', 'assistant.js', 'check-in.js', 'crew-camera.js', 'crew-profiles.js', 'engine.js', 'motor.js', 'workspace.js', 'app.js', 'assets\archivo.woff2', 'assets\OFL-Archivo.txt')
+$interfaceFiles = @('index.html', 'style.css', 'assistant.js', 'check-in.js', 'crew-camera.js', 'crew-profiles.js', 'engine.js', 'motor.js', 'workspace.js', 'app.js', 'ui.js', 'assets\public-sans.woff2', 'assets\OFL-PublicSans.txt', 'assets\earth-orbit.jpg', 'assets\ham.svg')
 foreach ($file in $appFiles + @($interfaceFiles | ForEach-Object { "interface\$_" })) {
     if (!(Test-Path -LiteralPath (Join-Path $app.FullName $file) -PathType Leaf)) { throw "Falta $file en la compilacion." }
 }

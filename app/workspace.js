@@ -1,9 +1,9 @@
 'use strict';
 
-const stages = {orbit:'Orbit',earth:'Earth',mars:'Mars',transit:'Deep space',moon:'Moon'};
-const metricNames = {temp:'Temperature',pulse:'Pulse',pressure:'Blood pressure',glucose:'Glucose',sleep:'Sleep',mood:'Mood'};
-const healthTabs = {general:'General',physical:'Physical',mental:'Mental',skills:'Skills'};
-const flowLabels = {photo:'Daily photo',check:'Daily check-in',motor:'Motor skills',journal:'Journal'};
+const stages = {orbit:'Earth Orbit',earth:'Earth',mars:'Mars',transit:'Deep Space',moon:'Moon'};
+const metricNames = {temp:'Temperature',pulse:'Heart rate',pressure:'Blood pressure',glucose:'Glucose',sleep:'Sleep',mood:'Mood'};
+const healthTabs = {general:'General',physical:'Physical',mental:'Mental',skills:'Motor Skills'};
+const flowLabels = {photo:'Daily photo',check:'Daily check-in',motor:'Motor test',journal:'Journal'};
 const regions = {
   head:'Head', neck:'Neck', torso:'Chest', abdomen:'Abdomen', hip:'Hip',
   lshoulder:'Left shoulder',rshoulder:'Right shoulder',larm:'Left arm',rarm:'Right arm',
@@ -13,49 +13,73 @@ const regions = {
 const symptoms = {pain:'Pain',stiffness:'Stiffness',weakness:'Weakness',tingling:'Tingling',irritation:'Irritation',other:'Other',resolved:'Resolved'};
 let stageChoice = 'orbit';
 let healthTab = 'general';
-let regionChoice = {side:'front',region:'head'};
+let bodySide = 'front';
+let bodySelection = new Map();
+let bodyEdit;
 let documentQuery = '';
+let openedDocument;
 let summaryPending = '';
 let trendMetric = 'pulse';
+let trendRange = 7;
+let trendDay = '';
+let recordsFilter = {date:'',env:''};
+let motorDate = '';
+let appearance = {theme:'light',text:'standard',volume:85};
 
-const stageOptions = selected => '<option value="" disabled'+(!selected ? ' selected' : '')+'>Select a stage</option>'+Object.entries(stages)
-  .map(([key,label]) => '<option value="'+key+'"'+(key === selected ? ' selected' : '')+'>'+label+'</option>').join('');
+const stageGlyphs = {orbit:'◈',earth:'◉',mars:'⤢',transit:'✧',moon:'☾'};
+const stageOptions = selected => Object.entries(stages).map(([key,label]) =>
+  '<option value="'+key+'"'+(key === selected ? ' selected' : '')+'>'+stageGlyphs[key]+'  '+label+'</option>').join('');
+const stageBadge = env => '<span class="stage-badge">'+UI.icon(env)+escape(stages[env] || 'Mission stage')+'</span>';
+const stageField = (id, value) => '<div class="stage-form-field">'+field('Mission stage','<select id="'+id+'" name="stage" aria-label="Mission stage" required>'+stageOptions(value)+'</select>')+'</div>';
 const firstName = () => state.profile.name.trim().split(/\s+/)[0];
 const flow = () => state.dailyFlow?.date === E.dateKey() ? state.dailyFlow : {};
 const markFlow = (key, status = 'done') => save({...state,dailyFlow:{...flow(),date:E.dateKey(),[key]:status}});
 const dailyJournal = () => (state.journals || []).find(item => item.date === E.dateKey());
 const bodyRecords = () => state.body || [];
-const flowStep = () => flow().check === 'urgent' ? undefined : Object.keys(flowLabels).find(key => !flow()[key]);
-const stageField = (id, value) => field('Mission stage','<select id="'+id+'" name="stage" required>'+stageOptions(value)+'</select>');
+const activeBodyRecords = () => bodyRecords().filter(item => item.env === state.env);
+const flowStep = () => flow().check === 'urgent' ? undefined : Object.keys(flowLabels).find(key => flow()[key] !== 'done');
 const card = (title, content, action = '', extra = '') => '<section class="card '+extra+'"><div class="card-head"><h2>'+title+'</h2>'+action+'</div>'+content+'</section>';
-const empty = text => '<p class="muted">'+text+'</p>';
+const empty = value => '<p class="muted">'+escape(value)+'</p>';
 const initialsOf = name => name.trim().split(/\s+/).slice(0,2).map(part => Array.from(part)[0]).join('').toUpperCase();
-const portrait = (name, source, extra = '') => source ? '<img class="portrait '+extra+'" src="'+source+'" alt="Photo of'+escape(name)+'">' :
+const portrait = (name, source, extra = '') => source ? '<img class="portrait '+extra+'" src="'+source+'" alt="Photo of '+escape(name)+'">' :
   '<span class="portrait '+extra+'" aria-hidden="true">'+escape(initialsOf(name))+'</span>';
+const dayDistance = date => Math.max(0,Math.round((Date.parse(E.dateKey()) - Date.parse(date)) / 86400000));
 
 function workflow() {
   const current = flowStep();
-  const status = {done:'Done',skipped:'Skipped',urgent:'Stopped for urgent help'};
-  return '<ol class="workflow" aria-label="Daily routine">'+Object.entries(flowLabels).map(([key,label]) =>
-    '<li class="'+(key === current ? 'current' : flow()[key] || '')+'"'+(key === current ? ' aria-current="step"' : '')+'><span class="step-dot" aria-hidden="true"></span>'+
-    '<span>'+label+'</span><small>'+ (status[flow()[key]] || (key === current ? 'In progress' : 'Pending'))+'</small></li>').join('')+'</ol>';
+  return '<ol class="workflow" aria-label="Daily routine">'+Object.entries(flowLabels).map(([key,label]) => {
+    const status = flow()[key];
+    const style = status === 'done' || status === 'urgent' ? status : key === current ? 'current' : '';
+    const text = status === 'done' ? 'Complete' : status === 'urgent' ? 'Urgent follow-up' : 'Pending';
+    return '<li class="'+style+'"'+(key === current ? ' aria-current="step"' : '')+'><button type="button" data-action="flow-step" data-step="'+key+'">'+
+      UI.icon(status === 'done' ? 'done' : status === 'urgent' ? 'alert' : key)+'<strong>'+label+'</strong><small>'+text+'</small></button></li>';
+  }).join('')+'</ol>';
+}
+
+function openFlowStep(step) {
+  if (flow().check === 'urgent' && step === 'check') return showRoute('bot');
+  if (step === 'photo') return openCamera('panel',dailyPhotos.has(E.dateKey()));
+  if (step === 'check') return beginIntake();
+  showRoute({motor:'motor',journal:'journal'}[step] || 'panel');
 }
 
 function resumeFlow() {
   if (flow().check === 'urgent') return showRoute('bot');
   const step = flowStep();
   if (step === 'photo') return openCamera('routine');
-  if (step === 'check') return beginIntake();
-  showRoute({motor:'motor',journal:'journal'}[step] || 'panel');
+  openFlowStep(step);
 }
 
-function vitals(entry, keys = Object.keys(metricNames)) {
+function vitals(entry, keys = Object.keys(metricNames), latest = false) {
+  const byDate = latest ? records().filter(record => simulation() || !record.sample) : [];
   return '<div class="vitals">'+E.metrics.filter(metric => keys.includes(metric.key)).map(metric => {
-    const value = entry?.values[metric.key];
+    const source = latest ? byDate.find(item => item.values[metric.key] != null) : entry;
+    const value = source?.values[metric.key];
     const flag = value != null && E.status(metric,value) === 'review';
-    return '<div class="vital '+(flag ? 'review' : '')+'"><span>'+metricNames[metric.key]+'</span><strong>'+
-      (value == null ? '—' : escape(E.format(value)))+'</strong><small>'+(value == null ? 'No reading' : escape(metric.unit))+
-      (flag ? ' · Review' : '')+'</small></div>';
+    return '<div class="vital '+(flag ? 'review' : '')+'"><span class="vital-header">'+UI.icon(metric.key)+metricNames[metric.key]+'</span><strong>'+
+      (value == null ? '—' : escape(E.format(value)))+'</strong><small>'+(value == null ? 'No reading' : escape(metric.unit)+
+      (latest ? ' · '+formatDay(source.date) : ''))+'</small>'+
+      (flag ? '<small class="baseline">Review · Demo baseline '+escape(E.format(metric.base))+'</small>' : '')+'</div>';
   }).join('')+'</div>';
 }
 
@@ -79,163 +103,367 @@ function recordedSummary(summary, fallback) {
   return paragraphReply(summary);
 }
 
+function emergencyBanner(entry = today(), withLink = false) {
+  const alert = state.urgentAlert?.date === E.dateKey() ? state.urgentAlert : chat.findLast(turn => turn.urgent && turn.date === E.dateKey());
+  if (!alert && flow().check !== 'urgent' && !E.hasLowBodyTemperature(entry) && entry?.values.impact !== 'urgent') return '';
+  const reason = alert?.sections?.evidence || (E.hasLowBodyTemperature(entry) ? 'Recorded temperature: '+E.format(entry.values.temp)+' °C.' : '');
+  return '<section class="emergency-banner" role="alert"><h2>'+UI.icon('alert')+'Contact the crew medical officer now.</h2>'+
+    '<p>Follow your approved mission emergency procedure.</p>'+
+    (reason ? '<p>'+escape(reason)+'</p>' : '')+
+    (withLink ? '<div>'+link('Open emergency guidance','bot','danger')+'</div>' : '')+'</section>';
+}
+
 function workspaceHome() {
   const profile = state.profile;
   const entry = today();
-  const journal = dailyJournal();
-  return pageHead('', 'Home', 'Your health and daily routine.',button('Continue routine','resume-flow','primary',!flowStep() ? 'hidden' : ''))+
-    '<div class="workspace-grid"><section class="card crew-card">'+portrait(profile.name,validPhoto(crewPortrait),'large')+
-    '<div><h2>'+escape(profile.name)+'</h2><p class="muted">'+escape(profile.role)+'</p>'+
-    '<dl class="crew-details"><dt>Stage</dt><dd>'+stages[state.env]+'</dd><dt>Crew medical officer</dt><dd>'+escape(profile.medical || 'Not recorded')+
-    '</dd><dt>Health history</dt><dd>'+escape(profile.history || 'Not recorded')+'</dd><dt>Allergies</dt><dd>'+escape(profile.allergies || 'Not recorded')+
-    '</dd></dl>'+button('Retake photo','daily-camera','compact')+'</div></section>'+
-    card('Daily routine',workflow(),button('Start check-in','assist-check','compact',busy ? 'disabled' : ''))+
-    card('Today’s check-in',recordedSummary(entry && (entry.summary || intakeSummary(entry,CI.urgent({values:entry.values,answers:{}}))),'Your summary will appear after check-in.'))+
-    card('Journal',recordedSummary(journal?.summary || (journal && {text:journal.text}),'No journal entry today.'),link('Open','journal','compact'))+
-    card('Risks and follow-ups',medicalFlags(entry),link('View health','health','compact'))+
-    card('Indicators',vitals(entry),'','wide')+'</div>';
+  const journal = dailyJournal() || state.journals?.[0];
+  const dates = [...state.records, ...(state.journals || []), ...motorHistory(), ...dailyPhotos.values(), ...bodyRecords()]
+    .filter(item => item.date && (simulation() || !item.sample)).map(item => item.date).sort();
+  const start = profile.missionStartDate || dates[0];
+  const days = start && Number.isFinite(Date.parse(start)) ? '<small>'+dayDistance(start)+' '+(profile.missionStartDate ? 'days since mission start' : 'days since first log')+'</small>' : '';
+  const completed = Object.keys(flowLabels).every(key => flow()[key] === 'done');
+  const lastActivity = dates.at(-1) || state.createdDate;
+  const missing = lastActivity && dayDistance(lastActivity) >= 3;
+  const newest = entry || records()[0];
+  const recentMood = records().find(item => item.values.moodImpact === 'task' || item.values.moodImpact === 'some');
+  return pageHead('', 'Home', '',flowStep() ? button('Continue routine '+UI.icon('arrow'),'resume-flow','primary') : '')+
+    '<section class="identity-banner"><div class="identity">'+portrait(profile.name,validPhoto(crewPortrait),'large')+
+    '<div><h2>'+escape(profile.name)+'</h2><p>'+escape(profile.role)+'</p><div class="identity-metrics">'+stageBadge(state.env)+days+'</div></div></div>'+
+    '<div class="identity-actions">'+button('Change stage','stage-menu','compact')+button(UI.icon('photo')+' '+(dailyPhotos.has(E.dateKey()) ? 'Retake photo' : 'Take photo'),'daily-camera','compact')+'</div></section>'+
+    emergencyBanner(entry,true)+
+    card('Daily routine',workflow()+
+      (completed ? '<p class="flow-state done">'+UI.icon('mood')+' Daily routine complete</p>' :
+        missing ? '<p class="flow-state muted">'+UI.icon('sad')+' It has been '+dayDistance(lastActivity)+' days since your last log. Pick a step to get back on track.</p>' :
+        !dates.length ? empty('Start with any step to create your first daily record.') : ''),'','daily-shell')+
+    '<div class="workspace-grid home-grid">'+
+    card('Latest indicators',vitals(null,undefined,true),'','wide')+
+    card('Risks and follow-ups',medicalFlags(entry)+(recentMood ? '<p class="state-pill review">'+UI.icon('alert')+' '+escape(E.dutyImpact[recentMood.values.moodImpact])+' · '+formatDay(recentMood.date)+'</p>' : ''),
+      link('View health','health','compact'),'followup-card')+
+    card('Check-in',recordedSummary(newest && (newest.summary || intakeSummary(newest,CI.urgent({values:newest.values,answers:{},sample:newest.sample}))),
+      'Your summary will appear after check-in.'),newest ? '<small>'+formatDay(newest.date)+'</small>' : '')+
+    card('Journal',recordedSummary(journal?.summary,'Your latest journal summary will appear here.'),
+      link(journal ? 'Open journal' : 'Write entry','journal','compact'),'wide')+'</div>';
 }
 
 function healthView() {
   const views = {general:generalHealth,physical:physicalHealth,mental:mentalHealth,skills:skillsHealth};
-  return pageHead('', 'Health', 'Review your records and changes that need follow-up.')+
+  return pageHead('', 'Health', '')+
     '<div class="tabs" role="group" aria-label="Health sections">'+Object.entries(healthTabs).map(([key,label]) =>
-      button(label,'health-tab',key === healthTab ? 'selected' : '', 'data-tab="'+key+'" aria-pressed="'+(key === healthTab)+'"')).join('')+'</div>'+views[healthTab]();
+      button(label,'health-tab',key === healthTab ? 'selected' : '', 'data-tab="'+key+'" aria-pressed="'+(key === healthTab)+'"')).join('')+
+    button(UI.icon('bag')+' Medical Supplies','medical-supplies','medical-link compact')+'</div>'+views[healthTab]();
 }
 
+const latestSummary = area => {
+  const summary = state.healthSummaries?.[area];
+  return summary && (!summary.env || summary.env === state.env) ? summary : null;
+};
 function summaryAction(area) {
-  return button(summaryPending === area ? 'Working…' : 'Update with NETIN','generate-summary','compact',
+  return button(summaryPending === area ? 'Working…' : 'Review with Ham','generate-summary','compact',
     'data-area="'+area+'"'+(summaryPending || busy ? ' disabled' : ''));
 }
 
 function generalHealth() {
-  const entry = today();
-  const summary = state.healthSummaries?.general;
-  return '<div class="workspace-grid">'+card('Vital signs',vitals(entry),'','wide')+
-    card('Risks',medicalFlags(entry))+
-    card('Precautions and next steps',recordedSummary(summary || entry?.summary,'NETIN can review your readings and mission documents.'),summaryAction('general'))+
-    card('Seven-day trend',trendView(),'','wide')+'</div>';
+  const entry = today() || records()[0];
+  return emergencyBanner(today(),true)+'<div class="workspace-grid">'+
+    card('Health summary',recordedSummary(latestSummary('general') || entry?.summary || (entry && intakeSummary(entry,'')),
+      'Complete a check-in to see a summary.'),summaryAction('general'))+
+    card('Risks and follow-ups',medicalFlags(entry),'','followup-card')+
+    card('Latest measurements',vitals(null,undefined,true),'','wide')+
+    card('Measurement trend',trendView(),'','wide')+'</div>';
 }
 
 function trendView() {
   const metric = E.metricByKey(trendMetric);
-  const days = week().map(({date,entry}) => ({date,value:entry?.values[trendMetric]}));
-  const number = value => Array.isArray(value) ? value[0] : value;
-  const values = days.filter(day => day.value != null).map(day => number(day.value));
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  return field('Measurement','<select id="trend-metric">'+Object.entries(metricNames).map(([key,name]) =>
+  const days = E.weekly(state.records,state.env,trendRange).map(({date,entry}) => ({date,value:entry?.values[trendMetric]}));
+  const readings = days.flatMap(({value}) => value == null ? [] : [value].flat());
+  const min = Math.min(...readings);
+  const max = Math.max(...readings);
+  const selected = days.find(day => day.date === trendDay) || days.at(-1);
+  const heading = '<div class="trend-controls">'+field('Measurement','<select id="trend-metric" aria-label="Measurement">'+Object.entries(metricNames).map(([key,name]) =>
     '<option value="'+key+'"'+(key === trendMetric ? ' selected' : '')+'>'+name+'</option>').join('')+'</select>')+
-    (values.length ? '<ol class="trend" aria-label="'+metricNames[trendMetric]+'">'+days.map(({date,value}) => {
-      const height = value == null ? 0 : max === min ? 52 : 16+76*(number(value)-min)/(max-min);
-      return '<li><span class="trend-track"><span class="trend-bar '+(E.status(metric,value) === 'review' ? 'review' : '')+
-        '" style="height:'+height+'%"></span></span><strong>'+(value == null ? '—' : escape(E.format(value)))+
-        '</strong><small>'+formatDay(date)+'</small></li>';
-    }).join('')+'</ol><p class="micro">'+escape(metric.unit)+(trendMetric === 'pressure' ? ' · Bar height shows systolic pressure.' : '')+'</p>' :
-    empty('No measurements in this stage yet.'));
+    '<div class="actions" aria-label="Trend period">'+[[1,'Today'],[7,'7 days'],[30,'30 days']].map(([range,label]) =>
+      button(label,'trend-range','compact','data-range="'+range+'" aria-pressed="'+(range === trendRange)+'"')).join('')+'</div></div>';
+  const graph = days.map(({date,value}) => {
+    const title = formatDay(date)+': '+(value == null ? 'No reading recorded' : E.format(value)+' '+metric.unit);
+    const bars = (value == null ? [] : [value].flat()).map((part,index) => {
+      const height = max === min ? 57 : 14+81*(part-min)/(max-min);
+      return '<span class="trend-bar '+(index ? 'secondary' : E.status(metric,value) === 'review' ? 'review' : '')+'" style="height:'+height+'%"></span>';
+    }).join('');
+    return '<li><button type="button" data-action="trend-day" data-day="'+date+'" aria-pressed="'+(date === selected.date)+'" aria-label="'+escape(title)+'" title="'+escape(title)+'">'+
+      '<span class="trend-track" aria-hidden="true">'+bars+'</span><span class="trend-day-label" aria-hidden="true">'+(trendRange === 30 ? date.slice(-2) : formatDay(date))+'</span></button></li>';
+  }).join('');
+  return heading+'<ol class="trend '+(trendRange === 30 ? 'many' : '')+'" style="--days:'+trendRange+'" aria-label="'+metricNames[trendMetric]+' trend">'+graph+'</ol>'+
+    (trendMetric === 'pressure' ? '<p class="micro">First bar: systolic · Second bar: diastolic</p>' : '')+
+    '<p id="trend-detail" role="status"><strong>'+formatDay(selected.date)+'</strong> · '+(selected.value == null ? 'No reading recorded' : escape(E.format(selected.value)+' '+metric.unit))+'</p>';
 }
 
+const regionKey = ({side,region}) => side+':'+region;
+function regionLabel(side, region) {
+  if (side === 'back' && region === 'torso') return 'Upper back';
+  if (side === 'back' && region === 'abdomen') return 'Lower back';
+  return regions[region];
+}
 function bodyStatus(record) {
-  if (!record || !record.intensity || record.symptom === 'resolved') return '';
+  if (!record) return '';
+  if (record.symptom === 'resolved') return 'resolved';
+  if (!record.intensity) return '';
   return record.intensity >= 7 ? 'strong' : record.intensity >= 4 ? 'medium' : 'low';
 }
-
+function selectedHistory(selection) {
+  return activeBodyRecords().filter(item => regionKey(item) === regionKey(selection)).sort((a,b) => b.date.localeCompare(a.date));
+}
 function bodyFigure(side) {
-  return '<div class="figure-view"><h3>'+ (side === 'front' ? 'Front' : 'Back')+'</h3>'+
-    '<div class="body-figure '+side+'" role="group" aria-label="'+(side === 'front' ? 'Front view' : 'Back view')+'">'+
-    Object.entries(regions).map(([key,name]) => {
-      const record = bodyRecords().find(item => item.side === side && item.region === key);
-      const active = regionChoice.side === side && regionChoice.region === key;
-      const label = (side === 'back' && key === 'torso' ? 'Upper back' : side === 'back' && key === 'abdomen' ? 'Lower back' : name);
-      return '<button type="button" class="region '+key+' '+bodyStatus(record)+'" data-action="body-part" data-side="'+side+'" data-region="'+key+
-        '" aria-label="'+label+(record ? ', '+symptoms[record.symptom]+' '+record.intensity+'/10' : '')+'" aria-pressed="'+active+'" title="'+label+'"></button>';
+  return '<div class="figure-view"><div class="body-figure '+side+'" role="group" aria-label="'+(side === 'front' ? 'Front view' : 'Back view')+'">'+
+    Object.entries(regions).map(([region]) => {
+      const key = regionKey({side,region});
+      const latest = selectedHistory({side,region})[0];
+      const label = regionLabel(side,region);
+      return '<button type="button" class="region '+region+' '+bodyStatus(latest)+'" data-action="body-part" data-side="'+side+'" data-region="'+region+
+        '" aria-label="'+label+(latest ? ', '+symptoms[latest.symptom]+' '+latest.intensity+'/10' : '')+'" aria-pressed="'+bodySelection.has(key)+'" title="'+label+'"></button>';
     }).join('')+'</div></div>';
 }
-
 function physicalHealth() {
-  const {side,region} = regionChoice;
-  const record = bodyRecords().find(item => item.side === side && item.region === region);
-  const selected = side === 'back' && region === 'torso' ? 'Upper back' : side === 'back' && region === 'abdomen' ? 'Lower back' : regions[region];
-  return '<div class="workspace-grid">'+card('Body map','<div class="body-map">'+bodyFigure('front')+bodyFigure('back')+'</div>'+
-    '<p class="legend"><span class="dot low"></span> 1–3 <span class="dot medium"></span> 4–6 <span class="dot strong"></span> 7–10 · Reported intensity</p>')+
-    card('Log a symptom','<p><strong>'+selected+'</strong> <span class="muted">· '+(side === 'front' ? 'Front' : 'Back')+'</span></p>'+
-    '<form id="body-form">'+field('Symptom','<select name="symptom">'+Object.entries(symptoms).map(([key,label]) => '<option value="'+key+'">'+label+'</option>').join('')+'</select>')+
-    field('Intensity (0–10)','<input name="intensity" type="number" min="0" max="10" step="1" value="'+(record?.intensity ?? 1)+'" required>')+
-    field('What changed','<textarea name="notes" maxlength="600" rows="3" placeholder="When it started or what activity affects it">'+escape(record?.notes || '')+'</textarea>')+
-    '<button class="button primary" type="submit">Save</button></form>')+
-    card('Possible causes and considerations',recordedSummary(state.healthSummaries?.physical,'Log a symptom so NETIN can review the changes and look up relevant evidence.'),summaryAction('physical'),'wide')+'</div>';
+  const selection = [...bodySelection.values()];
+  const regionTags = selection.map(({side,region}) => button(regionLabel(side,region)+' · '+(side === 'front' ? 'Front' : 'Back')+' ×',
+    'body-remove','compact','data-side="'+side+'" data-region="'+region+'" aria-label="Remove '+regionLabel(side,region)+'"')).join('');
+  const value = bodyEdit?.intensity ?? 1;
+  const history = selection.map(({side,region}) => {
+    const [current,...prior] = selectedHistory({side,region});
+    return '<div class="record-item"><h3>'+regionLabel(side,region)+'</h3>'+
+      (current ? '<p><strong>'+(current.symptom === 'resolved' ? 'Resolved' : 'Active')+'</strong> · '+symptoms[current.symptom]+' · '+current.intensity+'/10 · '+formatDay(current.date)+'</p>'+
+        (current.notes ? '<p>'+escape(current.notes)+'</p>' : '') : empty('No prior records.'))+
+      (prior.length ? '<details><summary>Previous records ('+prior.length+')</summary><ul>'+prior.map(item =>
+        '<li>'+formatDay(item.date)+' · '+symptoms[item.symptom]+' · '+item.intensity+'/10 '+escape(item.notes)+'</li>').join('')+'</ul></details>' : '')+'</div>';
+  }).join('');
+  return '<div class="workspace-grid body-console">'+card('Body map',
+    '<div class="actions" aria-label="Body view">'+['front','back'].map(side => button(side === 'front' ? 'Front' : 'Back','body-side','compact',
+      'data-side="'+side+'" aria-pressed="'+(bodySide === side)+'"')).join('')+'</div>'+
+    '<div class="body-map">'+bodyFigure(bodySide)+'</div>'+
+    '<p class="legend"><span class="dot low"></span> 1–3 <span class="dot medium"></span> 4–6 <span class="dot strong"></span> 7–10 <span class="dot resolved"></span> Resolved</p>'+
+    field('Find a region','<input id="region-search" type="search" list="body-regions" placeholder="Search and select a region">')+
+    '<datalist id="body-regions">'+Object.keys(regions).map(region => '<option value="'+regionLabel(bodySide,region)+'"></option>').join('')+'</datalist>')+
+    card('Log a symptom',(regionTags ? '<div class="region-list">'+regionTags+'</div>' : empty('Choose one or more regions to log a symptom.'))+
+    '<form id="body-form">'+field('Symptom','<select name="symptom">'+Object.entries(symptoms).map(([key,label]) => '<option value="'+key+'"'+(bodyEdit?.symptom === key ? ' selected' : '')+'>'+label+'</option>').join('')+'</select>')+
+    field('Intensity, 0–10','<input name="intensity" type="range" min="0" max="10" step="1" value="'+value+'">')+
+    '<div class="range-description">'+UI.icon('mood')+' <output id="intensity-value">'+value+' / 10</output> '+UI.icon('sad')+'</div>'+
+    field('What changed','<textarea name="notes" maxlength="600" rows="3" placeholder="When it started or what activity affects it">'+escape(bodyEdit?.notes || '')+'</textarea>')+
+    '<button class="button primary" type="submit" '+(selection.length ? '' : 'disabled')+'>Save symptom</button></form>'+history)+
+    card('Possible causes and considerations',recordedSummary(latestSummary('physical'),'Log a symptom to review relevant evidence with Ham.'),summaryAction('physical'),'wide')+'</div>';
 }
-
 function mentalHealth() {
-  const entries = (state.journals || []).slice(0,5);
-  return '<div class="workspace-grid">'+card('Mental health indicators',vitals(today(),['sleep','mood'])+
-    recordedSummary(state.healthSummaries?.mental,'NETIN can summarize patterns in your journal entries.'),summaryAction('mental'))+
-    card('Recent journals',entries.length ? entries.map(item => '<article class="record-item"><strong>'+formatDay(item.date)+'</strong><p>'+escape(item.text)+'</p></article>').join('') :
-      empty('No journal entries yet.'),link('Write','journal','compact'))+'</div>';
+  const entries = (state.journals || []).filter(item => item.env === state.env).slice(0,5);
+  const entry = records().find(item => item.values.mood != null || item.values.sleep != null);
+  const duty = entry?.values.moodImpact;
+  return '<div class="workspace-grid">'+card('Mood and sleep',vitals(null,['sleep','mood'],true)+
+    (duty ? '<p>'+UI.icon('mood')+' '+escape(E.dutyImpact[duty])+'</p>' : '')+
+    recordedSummary(latestSummary('mental'),entries.length < 2 ? 'There are too few journal entries to identify a pattern.' :
+      'Ask Ham to summarize the experiences you recorded.')+link('Talk to Ham','bot','compact'),summaryAction('mental'))+
+    card('Recent journals',entries.length ? entries.map(item => '<details class="record-item"><summary>View journal entry · '+formatDay(item.date)+'</summary><p>'+escape(item.text)+'</p></details>').join('') :
+      empty('No journal entries in this stage.'),link('Write','journal','compact'))+'</div>';
 }
 
-function skillsHealth() {
-  const recent = motorHistory().slice().sort((a,b) => b.date.localeCompare(a.date))[0];
-  return '<div class="workspace-grid">'+card('Performance summary',recordedSummary(state.healthSummaries?.skills,'Ask NETIN to compare your recorded results.'),summaryAction('skills'))+
-    card('Latest test',recent ? motorSummary(recent) : empty('No results yet.'),link('Play','motor','compact'))+
-    card('Test history',motorTable(E.weekly([],state.env,30)),'','wide')+'</div>';
+function motorHistoryFilter() {
+  const days = motorDate ? [{date:motorDate}] : E.weekly([],state.env,30);
+  return '<form id="motor-filter" class="search-form">'+field('Filter by date','<input type="date" name="date" value="'+escape(motorDate)+'">')+
+    '<button class="button compact">Apply</button>'+button('Clear','clear-motor-date','compact')+'</form>'+motorTable(days,state.env);
 }
+function skillsHealth() {
+  const recent = motorHistory().filter(result => result.env === state.env).sort((a,b) => b.date.localeCompare(a.date))[0];
+  return '<div class="workspace-grid">'+card('Performance summary',recordedSummary(latestSummary('skills'),'Review comparable test results with Ham.'),summaryAction('skills'))+
+    card('Latest test',recent ? motorSummary(recent) : empty('No results in this stage.'),link('Open motor tests','motor','compact'))+
+    card('Test history',motorHistoryFilter(),'','wide')+'</div>';
+}
+
+let journalDraft;
+let journalTimer;
+let journalSummaryTimer;
+const journalRequests = new WeakSet();
 
 function journalView() {
   const current = dailyJournal();
-  return pageHead('', 'Daily journal', 'Describe how today went and what you want to remember.')+workflow()+
-    card('Your entry','<form id="journal-form">'+field('What happened today?','<textarea name="note" rows="5" maxlength="2400" required placeholder="Describe your shift, how you felt, or what is on your mind.">'+
-      escape(current?.text || '')+'</textarea>')+'<button type="submit" class="button primary" '+(summaryPending ? 'disabled' : '')+'>'+
-      (summaryPending === 'journal' ? 'Saving with NETIN…' : 'Save with NETIN')+'</button> '+link('Back to Home','panel')+'</form>'+
-      (current?.summary ? recordedSummary(current.summary,'') : ''),'','journal-card');
+  return pageHead('', 'Journal', '',link('Back to Home','panel','compact'))+workflow()+
+    card('Today’s entry','<p class="muted">What stood out during your shift? How did you feel today?</p><form id="journal-form">'+
+      field('Your journal','<textarea name="note" rows="5" maxlength="2400" placeholder="Write about your day…">'+escape((journalDraft?.owner === session ? journalDraft.raw : current?.text) || '')+'</textarea>')+
+      '<p id="journal-status" class="micro journal-status" role="status">'+(current ? 'Saved on this device' : 'Saves automatically as you write')+'</p></form>'+
+      '<div id="journal-summary">'+journalSummaryView(current)+'</div>','','journal-card');
+}
+
+function journalSummaryView(entry) {
+  if (!entry) return '';
+  return '<h3>Ham’s summary</h3>'+(entry.summary ? recordedSummary(entry.summary,'') :
+    '<p class="muted">'+(journalRequests.has(entry) ? 'Preparing your summary…' : 'Your entry is saved. A summary will appear when available.')+'</p>'+
+    (journalRequests.has(entry) ? '' : button('Generate summary','journal-retry','compact')));
+}
+function updateJournalView(entry, status) {
+  if ($('journal-status') && status) $('journal-status').textContent = status;
+  if ($('journal-summary')) $('journal-summary').innerHTML = journalSummaryView(entry);
+}
+function queueJournal(input) {
+  clearTimeout(journalTimer);
+  clearTimeout(journalSummaryTimer);
+  journalDraft = {owner:session,date:E.dateKey(),env:state.env,raw:input.value,text:input.value.trim()};
+  $('journal-status').textContent = journalDraft.text ? 'Saving…' : 'Enter some text to save changes.';
+  journalTimer = setTimeout(() => flushJournal(true),550);
+}
+function flushJournal(scheduleSummary = true) {
+  clearTimeout(journalTimer);
+  const pending = journalDraft;
+  journalDraft = undefined;
+  if (!pending?.text || pending.owner !== session) return;
+  const entries = state.journals || [];
+  const existing = entries.find(item => item.date === pending.date);
+  if (existing?.text === pending.text) return updateJournalView(existing,'Saved on this device');
+  const journal = {date:pending.date,env:pending.env,text:pending.text};
+  if (!save({...state,dailyFlow:{...flow(),date:pending.date,journal:'done'},journals:[journal,...entries.filter(item => item.date !== journal.date)]})) {
+    journalDraft = pending;
+    return updateJournalView(existing,'Could not save. Edit the entry to try again.');
+  }
+  updateJournalView(journal,'Saved on this device');
+  if (scheduleSummary) {
+    clearTimeout(journalSummaryTimer);
+    journalSummaryTimer = setTimeout(() => void summarizeJournal(journal,pending.owner),1600);
+  }
+}
+async function summarizeJournal(journal, owner = session) {
+  if (!journal || journal.summary || journalRequests.has(journal) || owner !== session || !state.journals.includes(journal)) return;
+  journalRequests.add(journal);
+  if (view() === 'journal' && !journalDraft) updateJournalView(journal);
+  try {
+    const text = await AI.reflect('Summarize today’s saved journal entry. Use only the astronaut’s own recorded details.',{current:journal.text});
+    if (owner !== session || !state.journals.includes(journal)) return;
+    const updated = {...journal,summary:{date:journal.date,env:journal.env,text}};
+    if (!save({...state,journals:state.journals.map(item => item === journal ? updated : item)})) return;
+    if (view() === 'journal' && !journalDraft) updateJournalView(updated);
+    if (view() === 'panel') render();
+    if (readAloud && view() === 'journal' && !journalDraft) speakReply({role:'assistant',content:text});
+  } catch {
+    if (owner === session && state.journals.includes(journal)) notify('Your journal was saved. Ham’s summary is unavailable.');
+  } finally {
+    journalRequests.delete(journal);
+    if (owner === session && view() === 'journal' && !journalDraft) updateJournalView(dailyJournal());
+  }
 }
 
 function recordsView() {
   const byDay = new Map();
   const put = (date, kind, item) => {
-    if (!date) return;
+    if (!date || (recordsFilter.date && date !== recordsFilter.date) || (recordsFilter.env && item.env !== recordsFilter.env)) return;
     if (!byDay.has(date)) byDay.set(date,{});
     (byDay.get(date)[kind] ||= []).push(item);
   };
   state.records.forEach(item => put(item.date,'check',item));
   (state.journals || []).forEach(item => put(item.date,'journal',item));
   bodyRecords().forEach(item => put(item.date,'body',item));
-  (state.motorLogs || []).forEach(item => put(item.date,'motor',item));
+  motorHistory().forEach(item => put(item.date,'motor',item));
   (state.conversations || []).forEach(item => put(item.date,'chat',item));
   dailyPhotos.forEach((photo,date) => put(date,'photo',photo));
-  return pageHead('', 'Records', 'Your history by day and mission stage.',link('Report and trends','semana','primary'))+
-    (byDay.size ? [...byDay].sort(([a],[b]) => b.localeCompare(a)).map(([day,items],index) =>
-      '<details class="card day-record" '+(index === 0 ? 'open' : '')+'><summary>'+formatDay(day)+' <small>'+escape(day)+'</small></summary>'+
+  const names = {photo:'Photo',check:'Check-in',journal:'Journal',motor:'Motor tests',body:'Symptoms',chat:'Conversations'};
+  return pageHead('', 'Records', '',link('Reports and trends','semana','primary'))+
+    '<form id="records-filter" class="search-form">'+field('Date','<input name="date" type="date" value="'+escape(recordsFilter.date)+'">')+
+    field('Mission stage','<select name="env"><option value="">All stages</option>'+stageOptions(recordsFilter.env)+'</select>')+
+    '<button class="button compact">Apply</button>'+button('Clear','clear-records-filter','compact')+'</form>'+
+    (byDay.size ? '<div class="timeline">'+[...byDay].sort(([a],[b]) => b.localeCompare(a)).map(([day,items],index) =>
+      '<details class="card day-record" '+(index === 0 ? 'open' : '')+'><summary>'+formatDay(day)+' <small>'+escape(day)+'</small>'+
+      '<span class="day-tags">'+Object.keys(items).map(key => '<span class="state-pill">'+names[key]+'</span>').join('')+'</span></summary>'+
       (items.photo ? dailyPhoto(day) : '')+
-      (items.check || []).map(item => '<h3>Check-in ·'+stages[item.env]+'</h3>'+vitals(item)+
+      (items.check || []).map(item => '<h3>Check-in · '+stages[item.env]+(item.sample ? ' · Demo' : '')+'</h3>'+vitals(item)+
         (item.details || []).map(detail => '<p><strong>'+escape(detail.title)+'</strong> '+escape(detail.answer)+'</p>').join('')+
         (item.values.note ? '<p>'+escape(item.values.note)+'</p>' : '')+preview(item.image)+recordedSummary(item.summary,'')).join('')+
       (items.journal || []).map(item => '<h3>Journal · '+stages[item.env]+'</h3><p>'+escape(item.text)+'</p>'+recordedSummary(item.summary,'')).join('')+
       (items.motor || []).map(item => '<h3>'+escape(Motor.games[Motor.gameOf(item)].name)+' · '+stages[item.env]+'</h3>'+motorSummary(item)).join('')+
-      (items.body || []).map(item => '<p><strong>'+regions[item.region]+' · '+symptoms[item.symptom]+'</strong> '+item.intensity+'/10 '+escape(item.notes)+'</p>').join('')+
+      (items.body || []).map(item => '<p><strong>'+regionLabel(item.side,item.region)+' · '+symptoms[item.symptom]+'</strong> '+item.intensity+'/10 '+escape(item.notes)+'</p>').join('')+
       (items.chat?.length ? '<details><summary>Conversations ('+items.chat.length+')</summary>'+items.chat.map(item =>
-        '<p><strong>'+(item.role === 'assistant' ? 'NETIN' : 'You')+'</strong> '+escape(item.content)+'</p>').join('')+'</details>' : '')+'</details>').join('') : empty('No records yet.'));
+        '<p><strong>'+(item.role === 'assistant' ? 'Ham' : 'You')+'</strong> '+escape(item.content)+'</p>').join('')+'</details>' : '')+'</details>').join('')+'</div>' :
+      empty('No records match this selection.'));
 }
 
+function documentTarget(source) {
+  if (source.id && library.some(item => item.id === source.id)) {
+    return button(source.action || 'Open passage','read-markdown','compact',
+      'data-id="'+escape(source.id)+'" data-start="'+escape(source.start)+'" data-end="'+escape(source.end)+'"');
+  }
+  return /^https:\/\//i.test(source.url || '') ? '<a class="button compact" href="'+escape(source.url)+'" target="_blank" rel="noopener noreferrer">Open source</a>' : '';
+}
+
+function markdownPreview(item, range) {
+  const source = item.markdown;
+  const blocks = Array.from(source.matchAll(/\S[^\n]*(?:\n(?!\s*\n)[^\n]+)*/g));
+  const inPassage = match => range && match.index + match[0].length > range.start && match.index < range.end;
+  const focus = blocks.find(match => inPassage(match) && !/^#{1,6} [^\n]+\s*$/.test(match[0])) || blocks.find(inPassage);
+  return '<article class="document-content" aria-label="'+escape(item.title)+'">'+blocks.map(match => {
+    const lines = match[0].trim().split(/\r?\n/);
+    const marked = inPassage(match);
+    let content;
+    if (/^#{1,6} /.test(lines[0])) {
+      content = '<h3>'+escape(lines.shift().replace(/^#+ /,''))+'</h3>'+lines.map(line => '<p>'+escape(line)+'</p>').join('');
+    } else if (lines.length >= 2 && /^\|?[\s:|-]+$/.test(lines[1]) && lines[0].includes('|')) {
+      const cells = (line,tag) => line.trim().replace(/^\||\|$/g,'').split('|').map(cell => '<'+tag+'>'+escape(cell.trim())+'</'+tag+'>').join('');
+      content = '<div class="table-scroll"><table><thead><tr>'+cells(lines[0],'th')+'</tr></thead><tbody>'+
+        lines.slice(2).map(line => '<tr>'+cells(line,'td')+'</tr>').join('')+'</tbody></table></div>';
+    } else if (lines.every(line => /^(?:[-*] |\d+\. )/.test(line))) {
+      const list = /^\d/.test(lines[0]) ? 'ol' : 'ul';
+      content = '<'+list+'>'+lines.map(line => '<li>'+escape(line.replace(/^(?:[-*] |\d+\. )/,''))+'</li>').join('')+'</'+list+'>';
+    } else {
+      content = '<p>'+lines.map(escape).join('<br>')+'</p>';
+    }
+    return '<div'+(marked ? ' class="focused-passage"' : '')+(match === focus ? ' id="document-passage" tabindex="-1"' : '')+'>'+content+'</div>';
+  }).join('')+'</article>';
+}
+function openDocument(data) {
+  const item = library.find(entry => entry.id === data.id);
+  if (!item) return;
+  const start = Number(data.start);
+  const end = Number(data.end);
+  openedDocument = {id:item.id,range:Number.isFinite(start) && Number.isFinite(end) && end > start ? {start,end} : null};
+  showRoute('guias');
+  const target = $('document-passage') || $('document-reading');
+  target?.scrollIntoView({block:'nearest'});
+  target?.focus({preventScroll:true});
+}
 function documentsView() {
-  const query = documentQuery.toLocaleLowerCase().trim();
-  const matches = library.filter(item => item.relative.toLocaleLowerCase().includes(query) || item.markdown.toLocaleLowerCase().includes(query));
-  return pageHead('', 'Documents', 'Mission documents NETIN can consult.',button('Load Markdown folder','choose-markdown','primary',missionIndexing ? 'disabled' : ''))+
-    '<input id="markdown-files" type="file" webkitdirectory multiple hidden>'+
-    card('Local library','<form id="document-search" class="search-form">'+field('Search','<input name="query" type="search" value="'+escape(documentQuery)+'" placeholder="Name or content">')+
-      '<button class="button">Search</button></form><p class="muted" role="status">'+escape(missionImport || matches.length+' of '+library.length+' documents')+'</p>'+
+  const query = documentQuery.toLowerCase().trim();
+  const matches = library.filter(item => (item.relative+' '+item.markdown).toLowerCase().includes(query));
+  const active = library.find(item => item.id === openedDocument?.id);
+  const results = matches.map(item => {
+    const index = query ? item.markdown.toLowerCase().indexOf(query) : 0;
+    const snippet = item.markdown.slice(Math.max(0,index-34),Math.max(0,index)+112).replace(/\s+/g,' ');
+    return '<div class="document-row"><div><strong>'+escape(item.title)+'</strong><small>'+escape(snippet)+'</small></div>'+
+      button(active === item ? 'Open again' : 'Open','read-markdown','compact','data-id="'+escape(item.id)+'" aria-label="Open '+escape(item.title)+'"')+'</div>';
+  }).join('');
+  return pageHead('', 'Documents', '',button('Load Markdown folder','choose-markdown','primary',missionIndexing ? 'disabled' : ''))+
+    '<input id="markdown-files" type="file" webkitdirectory multiple hidden><div class="workspace-grid document-layout">'+
+    card('Local library','<form id="document-search" class="search-form">'+field('Search documents','<input name="query" type="search" value="'+escape(documentQuery)+'" placeholder="Title or content">')+
+      '<button class="button compact">Search</button></form><p class="muted" role="status">'+escape(missionImport || matches.length+' of '+library.length+' documents')+'</p>'+
       (libraryError ? '<p class="error">'+escape(libraryError)+'</p>' : '')+
-      (matches.length ? matches.map(item => '<div class="document-row"><span>'+escape(item.relative)+'</span>'+
-        button('Open','read-markdown','compact','data-id="'+escape(item.id)+'"')+'</div>').join('') : empty(library.length ? 'No matches.' : 'Load your mission Markdown folder.')));
+      (results || empty(library.length ? 'No matches.' : 'Load your mission Markdown folder.')))+
+    card(active ? escape(active.title) : 'Reader',active ? '<div id="document-reading" tabindex="-1">'+markdownPreview(active,openedDocument.range)+
+      (active.url && /^https:\/\//i.test(active.url) ? '<p><a href="'+escape(active.url)+'">Open original source</a></p>' : '')+'</div>' :
+      empty('Choose a document to read.'))+'</div>';
 }
-
 function settingsView() {
   const status = {unchecked:'Not checked',checking:'Checking…',ready:'Qwen is ready',missing:'Model missing',offline:'Ollama is offline'};
-  return pageHead('', 'Settings', 'Profile, voice and local model settings.')+'<div class="workspace-grid">'+
+  const choices = (key,options) => '<select aria-label="'+(key === 'theme' ? 'Theme' : 'Text size')+'" data-preference="'+key+'">'+Object.entries(options).map(([value,label]) =>
+    '<option value="'+value+'"'+(appearance[key] === value ? ' selected' : '')+'>'+label+'</option>').join('')+'</select>';
+  return pageHead('', 'Settings', '')+'<div class="workspace-grid">'+
+    card('Appearance','<div class="appearance-controls">'+field('Theme',choices('theme',{light:'Light',dark:'Dark'}))+
+      field('Text size',choices('text',{standard:'Standard',large:'Large',larger:'Extra large'}))+'</div>')+
+    card('Voice &amp; Audio',field('Volume','<input type="range" min="0" max="100" value="'+appearance.volume+'" data-preference="volume">')+
+      '<output id="volume-value">'+appearance.volume+'%</output><div class="actions">'+button('Automatic read-aloud','toggle-speech','','aria-pressed="'+readAloud+'"')+'</div>')+
     card('Profile','<p>'+escape(state.profile.name)+'</p><div class="actions">'+button('Edit profile','profile')+button('Sign out','exit-crew')+'</div>')+
-    card('Voice',empty('NETIN can read its replies aloud.')+button('Automatic read-aloud','toggle-speech','','aria-pressed="'+readAloud+'"'))+
-    card('Local assistant','<p>'+status[model]+'</p>'+button('Check connection','model','',model === 'checking' || busy ? 'disabled' : ''))+
-    card('Mission','<div class="actions">'+button('Change mission stage','stage-menu')+button('Medical supplies','medical-supplies')+'</div>')+'</div>';
+    card('Local assistant','<p role="status">'+status[model]+'</p>'+button('Check connection','model','',model === 'checking' || busy ? 'disabled' : ''))+'</div>';
+}
+function applyAppearance() {
+  document.documentElement.dataset.theme = appearance.theme;
+  document.documentElement.dataset.text = appearance.text;
+}
+function saveAppearance(control) {
+  const key = control.dataset.preference;
+  const valid = {theme:['light','dark'],text:['standard','large','larger']};
+  const value = key === 'volume' ? Math.round(Number(control.value)) : control.value;
+  if (key === 'volume' ? !Number.isFinite(value) || value < 0 || value > 100 : !valid[key]?.includes(value)) return;
+  appearance = {...appearance,[key]:value};
+  try { localStorage.setItem('netin-appearance-v1',JSON.stringify(appearance)); } catch { notify('Could not save preferences.'); }
+  applyAppearance();
 }
 
 function setStage(next) {
@@ -269,7 +497,7 @@ function historicalContext(query = '') {
   return sorted.slice(0,5).map(({relevance,...item}) => item);
 }
 
-async function generateSummary(area, journal) {
+async function generateSummary(area) {
   if (summaryPending || busy) return;
   const owner = session;
   summaryPending = area;
@@ -278,106 +506,138 @@ async function generateSummary(area, journal) {
     if (missionIndexing) await missionIndexing;
     if (owner !== session) return;
     const base = crewContext('daily');
-    const records = historicalContext(journal?.text || bodyRecords().slice(0,4).map(item => item.notes).join(' '));
+    const records = historicalContext(activeBodyRecords().slice(0,4).map(item => item.notes).join(' '));
     let summary;
     if (area === 'physical' || area === 'general') {
       const physical = area === 'physical';
       const question = physical ?
         'In one short paragraph, explain possible causes supported by the evidence, what to monitor and when to contact the crew medical officer. State uncertainty.' :
         'In one short paragraph, explain the relevant readings, evidence-based precautions and a concrete next step.';
-      const body = bodyRecords().slice(0,7).map(item => ({...item,region:regions[item.region],symptom:symptoms[item.symptom]}));
+      const body = activeBodyRecords().slice(0,7).map(item => ({...item,region:regions[item.region],symptom:symptoms[item.symptom]}));
       const terms = [...base.checkIns.flatMap(item => [item.note,...item.interview.map(detail => detail.answer)]),
         ...(physical ? body.map(item => item.region+' '+item.symptom+' '+item.notes) : [])].join(' ').slice(0,800);
       summary = await AI.answer(question,[],library,{...base,records,body:physical ? body : undefined},terms);
     } else {
-      const journals = (state.journals || []).slice(0,6).map(item => ({date:item.date,text:item.text.slice(0,420)}));
+      const journals = (state.journals || []).filter(item => item.env === state.env).slice(0,6).map(item => ({date:item.date,text:item.text.slice(0,420)}));
       const games = area === 'skills' ? (state.motorLogs || []).slice().sort((a,b) => b.date.localeCompare(a.date)).slice(0,10) : undefined;
-      const role = {journal:'Summarize today’s entry completely. Preserve the key events, symptoms or feelings, impact on duties and any next step mentioned.',
-        mental:'Summarize reported mood, sleep and impact on duties. Describe patterns only if they recur on multiple dates.',
+      const role = {mental:'Summarize reported mood, sleep and impact on duties. Describe patterns only if they recur on multiple dates.',
         skills:'Summarize comparable results and changes. Keep units, hand and environment. Avoid clinical conclusions.'}[area];
-      summary = {text:await AI.reflect(role,{current:journal?.text,journals:area === 'skills' ? undefined : journals,records,games})};
+      summary = {text:await AI.reflect(role,{journals:area === 'skills' ? undefined : journals,records,games})};
     }
     if (owner !== session) return;
     summary = {...summary,date:E.dateKey(),env:state.env};
-    if (journal) save({...state,journals:state.journals.map(item => item === journal ? {...item,summary} : item)});
-    else save({...state,healthSummaries:{...state.healthSummaries,[area]:summary}});
-    if (readAloud && ['journal','health'].includes(view())) speakReply({role:'assistant',content:summary.text,sections:summary.sections});
-  } catch { if (owner === session) notify('NETIN could not generate the summary. Your records are saved.'); }
-  finally { if (owner === session) { summaryPending = ''; render(); } }
+    save({...state,healthSummaries:{...state.healthSummaries,[area]:summary}});
+    if (readAloud && view() === 'health') speakReply({role:'assistant',content:summary.text,sections:summary.sections});
+  } catch { if (owner === session) notify('Ham could not generate the summary. Your records are saved.'); }
+  finally { if (owner === session) { summaryPending = ''; if (view() !== 'journal') render(); } }
 }
 
+function confirmStage(next) {
+  if (!Object.hasOwn(stages,next) || next === state.env) return;
+  $('modal').close();
+  openModal('Switch mission stage?',
+    '<form id="stage-confirm-form" data-next="'+next+'"><p>'+stageBadge(state.env)+' '+UI.icon('arrow')+' '+stageBadge(next)+'</p>'+
+    '<p class="muted">New entries will use '+stages[next]+'. Existing records keep the stage where they were logged.</p>'+
+    '<div class="actions">'+button('Cancel','close')+'<button class="button primary">Switch stage</button></div></form>');
+}
+function toggleRegion(side,region,remove = false) {
+  const key = regionKey({side,region});
+  if (remove || bodySelection.has(key)) bodySelection.delete(key);
+  else bodySelection.set(key,{side,region});
+  render();
+}
 function workspaceClick(control) {
-  const {action,side,region,tab,id,area} = control.dataset;
+  const {action,side,region,tab,area} = control.dataset;
   if (action === 'resume-flow') resumeFlow();
-  else if (action === 'stage-menu') openModal('Mission stage','<form id="stage-form">'+stageField('active-stage',state.env)+'<button class="button primary">Save stage</button></form>');
+  else if (action === 'flow-step' && Object.hasOwn(flowLabels,control.dataset.step)) openFlowStep(control.dataset.step);
+  else if (action === 'stage-menu') openModal('Change mission stage','<form id="stage-form">'+stageField('active-stage',state.env)+'<button class="button primary">Review change</button></form>');
   else if (action === 'health-tab' && Object.hasOwn(healthTabs,tab)) {
     healthTab = tab;
     render();
     document.querySelector('[data-tab="'+tab+'"]')?.focus();
-  } else if (action === 'body-part' && ['front','back'].includes(side) && Object.hasOwn(regions,region)) {
-    regionChoice = {side,region};
+  } else if (action === 'body-side' && ['front','back'].includes(side)) {
+    bodySide = side;
     render();
-    $('body-form').elements.symptom.focus();
+    document.querySelector('[data-action="body-side"][data-side="'+side+'"]')?.focus();
+  } else if (['body-part','body-remove'].includes(action) && ['front','back'].includes(side) && Object.hasOwn(regions,region)) {
+    toggleRegion(side,region,action === 'body-remove');
+    document.querySelector('[data-action="body-part"][data-side="'+side+'"][data-region="'+region+'"]')?.focus();
+  } else if (action === 'trend-range' || action === 'trend-day') {
+    if (action === 'trend-range' && [1,7,30].includes(Number(control.dataset.range))) trendRange = Number(control.dataset.range);
+    if (action === 'trend-day') trendDay = control.dataset.day;
+    render();
+    const selector = action === 'trend-range' ? '[data-range="'+trendRange+'"]' : '[data-action="trend-day"][data-day="'+trendDay+'"]';
+    document.querySelector(selector)?.focus({preventScroll:true});
   } else if (action === 'generate-summary' && Object.hasOwn(healthTabs,area)) void generateSummary(area);
+  else if (action === 'journal-retry') void summarizeJournal(dailyJournal());
   else if (action === 'next-motor') showRoute('motor');
-  else if (action === 'next-journal') {
-    if (!flow().motor && !markFlow('motor','skipped')) return true;
-    showRoute('journal');
-  } else if (action === 'choose-markdown') $('markdown-files').click();
-  else if (action === 'read-markdown') {
-    const item = library.find(entry => entry.id === id);
-    if (item) openModal(escape(item.relative),'<pre class="markdown-reader">'+escape(item.markdown)+'</pre>');
-  } else return false;
+  else if (action === 'next-journal') showRoute('journal');
+  else if (action === 'choose-markdown') $('markdown-files').click();
+  else if (action === 'read-markdown') openDocument(control.dataset);
+  else if (action === 'clear-records-filter') { recordsFilter = {date:'',env:''}; render(); }
+  else if (action === 'clear-motor-date') { motorDate = ''; render(); }
+  else return false;
   return true;
 }
 
-async function workspaceSubmit(form) {
+function workspaceSubmit(form) {
   const data = new FormData(form);
   if (form.id === 'stage-form') {
-    if (setStage(data.get('stage'))) { $('modal').close(); render(); }
+    if (data.get('stage') === state.env) $('modal').close();
+    else confirmStage(data.get('stage'));
+  } else if (form.id === 'stage-confirm-form') {
+    if (!setStage(form.dataset.next)) return notify('Wait for the current activity to finish before switching stage.');
+    bodySelection.clear();
+    bodyEdit = undefined;
+    trendDay = '';
+    $('modal').close();
+    render();
+    notify('Mission stage updated.');
   } else if (form.id === 'body-form') {
     const symptom = data.get('symptom');
     const intensity = symptom === 'resolved' ? 0 : Number(data.get('intensity'));
-    if (!Object.hasOwn(symptoms,symptom) || !Number.isInteger(intensity) || intensity < 0 || intensity > 10) return;
-    const item = {...regionChoice,date:E.dateKey(),env:state.env,symptom,intensity,notes:data.get('notes').trim()};
-    const prior = bodyRecords().filter(record => record.region !== item.region || record.side !== item.side || record.date !== item.date || record.env !== item.env);
-    if (save({...state,body:[item,...prior]})) { render(); notify('Symptom saved.'); }
-  } else if (form.id === 'journal-form') {
-    const note = data.get('note').trim();
-    if (!note || summaryPending) return;
-    const journal = {date:E.dateKey(),env:state.env,text:note};
-    if (!save({...state,dailyFlow:{...flow(),date:E.dateKey(),journal:'done'},journals:[journal,...(state.journals || []).filter(item => item.date !== journal.date)]})) return;
-    const owner = session;
-    await generateSummary('journal',journal);
-    if (session === owner && view() === 'journal') showRoute('panel');
+    if (!bodySelection.size || !Object.hasOwn(symptoms,symptom) || !Number.isInteger(intensity) || intensity < 0 || intensity > 10) return;
+    const date = E.dateKey();
+    const entries = [...bodySelection.values()].map(selection => ({...selection,date,env:state.env,symptom,intensity,notes:data.get('notes').trim()}));
+    const prior = bodyRecords().filter(record => record.date !== date || record.env !== state.env || !bodySelection.has(regionKey(record)));
+    if (save({...state,body:[...entries,...prior]})) { bodyEdit = undefined; render(); notify('Symptom saved.'); }
   } else if (form.id === 'document-search') {
     documentQuery = data.get('query');
     render();
     $('document-search').elements.query.focus();
+  } else if (form.id === 'records-filter') {
+    recordsFilter = {date:data.get('date'),env:data.get('env')};
+    render();
+  } else if (form.id === 'motor-filter') {
+    motorDate = data.get('date');
+    render();
+  } else if (form.id === 'journal-form') {
+    queueJournal(form.elements.note);
+    flushJournal(true);
   }
 }
 
 function assistantView() {
   const current = draft()?.mode === 'chat' ? draft() : null;
   const history = chat.slice(-80);
-  const stopped = !current && flow().check === 'urgent';
-  const finished = !current && !stopped && flow().check && !flow().motor;
-  const messages = history.map((turn,index) => '<article class="message '+turn.role+'"><span class="folio">'+
-    (turn.role === 'user' ? 'You' : 'NETIN')+'</span>'+(turn.role === 'assistant' ? paragraphReply(turn) : '<p>'+escape(turn.content)+'</p>')+
+  const stopped = flow().check === 'urgent';
+  const finished = !current && !stopped && flow().check === 'done' && flow().motor !== 'done';
+  const messages = history.map((turn,index) => '<article class="message '+turn.role+(turn.urgent ? ' urgent' : '')+'"><div class="speaker">'+
+    (turn.role === 'user' ? 'You' : UI.ham()+' Ham')+'</div>'+(turn.role === 'assistant' ? paragraphReply(turn) : '<p>'+escape(turn.content)+'</p>')+
     (turn.role === 'assistant' ? button('Listen','speak-reply','voice-button','data-index="'+(chat.length-history.length+index)+'"') : '')+
     '</article>').join('');
   const controls = stopped ? '' : current ? button('Save and finish','end-chat-check','compact',busy ? 'disabled' : '') :
     button('Daily check-in','assist-check','compact',busy ? 'disabled' : '');
-  return pageHead('',current ? 'Daily check-in' : 'Assistant',current ? '' : '',controls)+
-    (current || finished || stopped ? workflow() : '')+
-    '<section class="card assistant-shell"><div class="assistant-toolbar">'+
-    (finished ? button('Continue to motor skills','next-motor','primary') : '<strong>NETIN</strong>')+
-    '<div class="actions">'+button('Voice','toggle-speech','compact','aria-pressed="'+readAloud+'"')+
+  return pageHead('',current ? 'Daily check-in' : 'Assistant','',controls)+
+    emergencyBanner()+(current || finished || stopped ? workflow() : '')+
+    '<section class="card assistant-shell"><div class="assistant-toolbar"><div class="assistant-head">'+UI.ham()+' Ham</div>'+
+    '<div class="actions">'+(finished ? button('Continue to motor test','next-motor','primary') : '')+
+    button(UI.icon('sound')+' Auto-read','toggle-speech','compact','aria-label="Automatic read-aloud" aria-pressed="'+readAloud+'"')+
     button('Stop audio','stop-speech','compact')+'</div></div><div id="chat-log" class="transcript" aria-live="polite">'+
-    (current ? intakeTranscript(current,busy ? null : CI.question(current)) : messages || empty('Hello,'+escape(firstName())+'. How is your shift going?'))+
-    (busy ? '<p class="muted">NETIN is preparing a response…</p>' : '')+'</div>'+
+    (current ? intakeTranscript(current,busy ? null : CI.question(current)) : messages || empty('Hello, '+firstName()+'. How is your shift going?'))+
+    (busy ? '<p class="muted">Ham is preparing a response…</p>' : '')+'</div>'+
     (current ? intakeComposer(CI.question(current)) : '<form id="chat-form" class="composer">'+field('Message',
-      '<textarea name="query" rows="2" maxlength="1000" placeholder="Ask NETIN a question or share how you are doing" required '+(busy ? 'disabled' : '')+'></textarea>')+
+      '<textarea name="query" rows="2" maxlength="1000" placeholder="Ask Ham a question or share how you are doing" required '+(busy ? 'disabled' : '')+'></textarea>')+
       '<button class="button primary" '+(busy ? 'disabled' : '')+'>Send</button></form>')+'</section>';
 }
 

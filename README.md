@@ -32,14 +32,14 @@ flowchart TD
 | Area | What to try |
 | --- | --- |
 | Home | Read the check-in recap, journal, relevant follow-ups and vital signs |
-| Assistant | Ask a question from the mission library, describe how you feel, or simulate an emergency handoff |
-| Health | Explore seven-day trends, the body map, journal patterns and motor tests |
+| Assistant | Ask Ham a question from the mission library, describe how you feel, or simulate an emergency handoff |
+| Health | Explore trends for today, 7 days or 30 days, log symptoms on the body map and review motor tests |
 | Records | Browse two synthetic 30-day astronaut histories, including values, interviews and game results |
 | Documents | Load a local Markdown folder and inspect the references NETIN uses |
 
 ## Installation
 
-Download the Windows x64 ZIP from GitHub and extract it to a folder on your PC, such as `Documents\NETIN`. Open Ollama on that PC and run `ollama pull qwen3:4b`. Start `NETIN.exe` from the extracted folder, try Maya Chen or Mateo Ruiz, then import the included `ReferenceLibrary` folder from **Documents**. The [judges' guide](docs/INSTALLATION.md) covers prerequisites, demo passwords, sample questions and troubleshooting.
+Download the Windows x64 ZIP from GitHub and extract it to a folder on your PC, such as `Documents\NETIN`. Open Ollama on that PC and run `ollama pull qwen3:4b`. Start `NETIN.exe` from the extracted folder and try Maya Chen or Mateo Ruiz. The included demo references open in **Documents**, where you can also load another Markdown folder. The [judges' guide](docs/INSTALLATION.md) covers prerequisites, demo passwords, sample questions and troubleshooting.
 
 ## How it works
 
