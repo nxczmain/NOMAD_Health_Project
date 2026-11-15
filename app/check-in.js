@@ -3,7 +3,7 @@
 (function (root) {
   const E = root.AstraEngine;
   const emergencySource = 'https://medlineplus.gov/ency/article/001927.htm';
-  const urgentPrompt = 'Before we begin, are you experiencing trouble breathing, chest pain, sudden confusion, fainting, or bleeding that will not stop?';
+  const urgentPrompt = 'Before we begin, are you having trouble breathing, chest pain, sudden confusion, fainting, or bleeding that will not stop? Are you worried you might hurt yourself or someone else right now?';
   const yesNo = {yes:'Yes',no:'No',unsure:'Not sure'};
   const measures = ['temp','pulse','pressure','sleep','mood','glucose'];
   const symptomQuestions = {
@@ -47,7 +47,7 @@
     const denial = /^(?:none(?: at all)?|no(?: new symptoms| symptoms| issues| problems| concerns)?|nothing(?: to report| new)?|all good|i (?:feel|m|am) (?:fine|well|good)|ningun[oa]|no(?: tengo(?: sintomas| molestias))?|nada(?: que reportar)?|sin (?:sintomas|molestias|novedades)|me siento bien|todo bien)(?:\s+|$)/;
     const routine = /^(?:just\s+)?(?:(?:the|a|my)\s+)?(?:(?:normal|routine|regular|daily)\s+)?check\s?in$|^(?:(?:solo|nomas)\s+)?(?:(?:el|un|la|una)\s+)?(?:(?:chequeo|registro|revision)(?:\s+(?:diari[oa]|habitual|normal|de rutina))?|(?:check\s?in)(?:\s+(?:normal|diario|de rutina))?)$/;
     const remainder = normalized.replace(denial,'');
-    const improvement = /^(?:i(?: m)? (?:feel(?:ing)?|am) (?:much |a lot )?better|me siento (?:mucho |bastante )?mejor)(?: (?:now|today|i slept well|i slept better|ya dormi bien|dormi bien|ya))*(?: thanks| gracias)?$/;
+    const improvement = /^(?:i(?: m)? (?:feel(?:ing)?|am) (?:much |a lot )?better|me siento (?:mucho |bastante )?mejor)(?: (?:(?:and |y )?(?:i slept well|i slept better|ya dormi bien|dormi bien)|now|today|ya))*(?: thanks| gracias)?$/;
     return (denial.test(normalized) && !remainder) || routine.test(remainder) || improvement.test(normalized);
   }
 
@@ -67,6 +67,9 @@
   }
 
   function urgent(current) {
+    if (current.emergency) return current.emergency;
+    const report = current.turns?.findLast(turn => turn.role === 'user' && emergencyKind(turn.content));
+    if (report) return emergencyKind(report.content);
     if (E.hasLowBodyTemperature(current)) return 'temperature';
     if (['yes','unsure'].includes(current.answers.urgent) || current.values.impact === 'urgent') return 'symptoms';
     return '';
@@ -146,13 +149,33 @@
     if (/\b(?:responding to (?:my |the )?(?:texts?|messages?|emails?)|no responde (?:a mis mensajes|al correo))\b/.test(folded) &&
         !/\b(?:breath\w*|respira\w*|unconscious|inconsciente)\b/.test(folded)) return false;
     if (/\b(?:unresponsive|unconscious|inconsciente)\b/.test(folded) && !/\b(?:not |no esta |never )(?:unresponsive|unconscious|inconsciente)\b/.test(folded)) return true;
-    return /\b(?:crew ?mate|partner|companion|colleague|companer[oa]|tripulante|he|she|person|persona)\b/.test(folded) &&
-      /\b(?:is not responding|isnt responding|wont respond|no response|cannot wake|cant wake|wont wake|no (?:responde|reacciona|despierta))\b/.test(folded);
+    return /\b(?:crew ?mate|partner|companion|colleague|companer[oa]|tripulante|he|she|they|theyre|person|persona)\b/.test(folded) &&
+      /\b(?:(?:is |are )?not responding|isnt responding|arent responding|wont respond|no response|cannot wake|cant wake|wont wake|no (?:responde|reacciona|despierta))\b/.test(folded);
   }
 
-  function emergencyReport(text) {
-    if (unresponsiveReport(text)) return true;
-    return /\b(?:i (?:can(?:not|['’]t) breathe|(?:am having|have) (?:chest pain|trouble breathing)|just (?:fainted|passed out)|(?:want|plan) to (?:kill myself|end my life))|no puedo respirar|(?<!\bno\s)(?:tengo (?:dolor (?:en el|de) pecho|dificultad para respirar)|me (?:duele el pecho|acabo de desmayar)|(?:quiero|voy a) (?:suicidarme|quitarme la vida)))\b/i.test(text);
+  function emergencyKind(text) {
+    const folded = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[’']/g,'');
+    const clauses = folded.split(/[.!?;\n]+|\b(?:but|pero)\b/);
+    for (const clause of clauses) {
+      if (/^\s*(?:what if|how (?:do|should) i respond if|what should i do if|if (?:someone|a person|i)|que (?:hago|pasaria) si|in (?:a |this )?(?:simulation|scenario)|hypothetically)\b/.test(clause) &&
+          !/\b(?:right now|currently|ahora mismo|en este momento)\b/.test(clause)) continue;
+      const selfHarm = /\bi\s+(?:still\s+)?(?:want to|wanna|plan to|am going to|m going to|m gonna|might)\s+(?:kill myself|hurt myself|harm myself|end my life|die)\b|(?<!\bno\s)\b(?:quiero|voy a|pienso|podria)\s+(?:suicidarme|matarme|hacerme dano|quitarme la vida)\b/;
+      if (selfHarm.test(clause)) return 'self-harm';
+      const englishThreat = /\b(?:i\s+(?:still\s+)?(?:want to|wanna|plan to|am going to|m going to|m gonna|might|could|will|m about to)|restrain(?:ing)? myself from|stop(?:ping)? myself from|cant stop myself from|cannot stop myself from)\s+(?:kill(?:ing)?|hurt(?:ing)?|harm(?:ing)?|shoot(?:ing)?|stab(?:bing)?|attack(?:ing)?)\s+(?!(?:myself|it|time|the (?:process|server|job|app|program|lights?)|a (?:process|job)|two birds)\b)[a-z]/;
+      const spanishThreat = /(?<!\bno\s)\b(?:quiero|voy a|pienso|podria|planeo)\s+(?:matar(?:l[oa]s?)?|herir(?:l[oa]s?)?|atacar(?:l[oa]s?)?|disparar(?:le)?|hacer(?:le)? dano)(?:\s+(?:a\s+)?[a-z]|\b(?<=l[oa])|\s*$)|\b(?:me cuesta contenerme|no puedo controlarme|me estoy conteniendo)\b.{0,70}\b(?:matar\w*|herir\w*|atacar\w*|hacerle dano)\b/;
+      const cannotKeepOthersSafe = /\bi\s+(?:cant|cannot)\s+(?:promise|guarantee)\s+(?:he|she|they)(?:ll\s+be|\s+will\s+be)\s+safe\s+if\s+i\b/;
+      if (englishThreat.test(clause) || spanishThreat.test(clause) || cannotKeepOthersSafe.test(clause)) return 'violence';
+      if (unresponsiveReport(clause)) return 'unresponsive';
+      const medical = /\b(?:(?:i|he|she|they|we) (?:cant|cannot|can not) breathe|(?:i|he|she|they) (?:am having|is having|are having|have|has) (?:chest pain|trouble breathing)|(?:i|he|she|they) just (?:fainted|passed out)|(?:my|his|her|their) (?:throat is closing|face is drooping)|(?:the |my |his |her |their )?bleeding (?:wont|will not) stop|no puedo respirar|(?<!\bno\s)(?:tengo (?:dolor (?:en el|de) pecho|dificultad para respirar)|me (?:duele el pecho|acabo de desmayar))|se (?:me |le )?cierra la garganta|(?:la )?hemorragia no para)\b/;
+      if (medical.test(clause)) return 'medical';
+      if (/\b(?:(?:i|he|she|they) (?:just )?(?:overdosed|took an overdose)|(?:i|he|she|they) think (?:i|he|she|they) (?:am|is|are) having (?:a stroke|a heart attack)|(?:acabo de tomar una sobredosis|creo que estoy sufriendo un derrame))\b/.test(clause)) return 'medical';
+    }
+    return '';
+  }
+
+  function interrupt(current, prompt, report, kind) {
+    return {...current,next:undefined,emergency:kind,values:{...current.values,impact:'urgent'},
+      turns:[...current.turns,{role:'assistant',content:prompt.prompt},{role:'user',content:report}]};
   }
 
   function embeddedReadings(text) {
@@ -176,6 +199,8 @@
 
   function apply(current, prompt, input, skip) {
     const raw = input.trim();
+    const emergency = !skip && emergencyKind(raw);
+    if (emergency) return interrupt(current,prompt,raw,emergency);
     if (!skip && !raw && prompt.key !== 'note') throw new Error('Enter an answer or choose an option.');
     if (skip && !prompt.optional) throw new Error('Answer this question to continue.');
     let value = skip ? '' : raw;
@@ -200,8 +225,6 @@
       if (value === '') delete values[prompt.key];
       else values[prompt.key] = value;
     }
-    // Explicit current emergency statements also interrupt free-text follow-ups.
-    if (!prompt.metric && !prompt.options && emergencyReport(raw)) values.impact = 'urgent';
     const readings = prompt.key === 'symptoms' ? embeddedReadings(raw) : {};
     const displayed = skip ? 'Skipped' : prompt.options?.[value] || (prompt.metric ? E.format(value)+' '+prompt.metric.unit : raw || 'No additional note');
     return {...current,next:undefined,values:{...values,...readings},answers:{...current.answers,...readings,[prompt.key]:value},
@@ -230,5 +253,5 @@
   }
 
   root.NetinCheckIn = {create,question,questions,restore,apply,urgent,toEntry,differingReadings,symptomTopic,symptomQuestions,
-    routineResponse,unresponsiveReport,emergencyReport,emergencySource};
+    routineResponse,emergencyKind,interrupt,emergencySource};
 })(globalThis);

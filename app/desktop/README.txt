@@ -1,4 +1,4 @@
-NETIN 3.1 for Windows x64
+NETIN 3.1.1 for Windows x64
 
 Open NETIN.exe from this folder. Keep the interface and WebView2 DLLs beside it.
 Microsoft Edge WebView2 Runtime and .NET Framework 4.8 are required.

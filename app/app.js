@@ -430,7 +430,8 @@ function localReview(mode, limitation = '') {
 }
 function temperatureAlert(entry) {
   return AI.summary({
-    immediateActions: 'Contact the crew medical officer now and report the temperature reading.',
+    immediateActions: stageChoice === 'earth' ? 'Call local emergency services now and report the temperature reading.' :
+      'Contact the crew medical officer now and report the temperature reading.',
     evidence: 'Your check-in recorded '+E.format(entry.values.temp)+' °C. CDC emergency guidance uses a threshold below 35 °C for body temperature [1].',
     whyItMatters: 'If accurate, the reading could indicate hypothermia and needs urgent assessment [1].',
     recommendations: 'Repeat the measurement with a reliable device if available while arranging medical help.',
@@ -440,13 +441,27 @@ function temperatureAlert(entry) {
   }, [{ref:1,title:'CDC · Preventing Hypothermia',url:E.lowTemperatureSource}]);
 }
 
-function emergencyAnswer(report) {
-  if (!CI.unresponsiveReport(report)) return intakeSummary(null,'symptoms');
+function emergencyAnswer(kind, report = '') {
   const earth = stageChoice === 'earth';
-  const reportText = report.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[’']/g,'');
-  const absent = /\b(?:not breathing|isnt breathing|stopped breathing|only gasping|no respira|dejo de respirar|solo jadea)\b/.test(reportText);
   const action = earth ? 'Call local emergency services now.' :
     'Alert the crew medical officer and activate the onboard emergency procedure now.';
+  if (kind === 'violence' || kind === 'self-harm') {
+    const gettingHelp = earth ? action : 'Activate the onboard emergency procedure and contact mission command or another available crewmate now.';
+    const distance = kind === 'violence' ? 'Move away from the person and from anything you could use to hurt them, if you can do so safely. ' :
+      'Move away from anything you could use to hurt yourself and ask another person to stay with you. ';
+    const danger = kind === 'violence' ? 'Tell responders you are afraid you may hurt someone, and say where you are.' :
+      'Tell responders you may hurt yourself, and say where you are.';
+    const paragraph = 'I’m taking this seriously. '+distance+gettingHelp+' '+danger;
+    return {text:paragraph,paragraph,urgent:true,
+      sources:[{ref:1,title:'NHS · Urgent help for a mental health emergency',url:'https://www.nhs.uk/nhs-services/mental-health-services/where-to-get-urgent-help-for-mental-health/'}]};
+  }
+  if (kind !== 'unresponsive') {
+    const paragraph = action+' Tell responders exactly what is happening, where you are, and when it started. Follow their directions.';
+    return {text:paragraph,paragraph,urgent:true,
+      sources:[{ref:1,title:'MedlinePlus · Recognizing medical emergencies',url:CI.emergencySource}]};
+  }
+  const reportText = report.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[’']/g,'');
+  const absent = /\b(?:not breathing|isnt breathing|stopped breathing|only gasping|no respira|dejo de respirar|solo jadea)\b/.test(reportText);
   const breathing = absent ?
     'If they are not breathing normally or are only gasping, start CPR and use an AED as soon as available under your emergency procedure.' :
     'Stay with them and keep checking their breathing. If it stops or they are only gasping, start CPR and use an AED as soon as available under your emergency procedure.';
@@ -469,15 +484,7 @@ function checkFollowUps(entry) {
 
 function intakeSummary(entry, urgent) {
   if (urgent === 'temperature') return temperatureAlert(entry);
-  if (urgent) return AI.summary({
-    immediateActions:'Contact the crew medical officer now using your emergency procedure.',
-    evidence:'You reported needing urgent help or a possible emergency warning sign [1].',
-    whyItMatters:'A possible warning sign needs urgent assessment [1].',
-    recommendations:'Tell the crew medical officer what you noticed and when it began.',
-    measurements:'Share any readings you already have available.',
-    indicators:'Report the warning sign and how it has changed.',
-    risks:'The reported warning sign may indicate an emergency [1].'
-  }, [{ref:1,title:'MedlinePlus · Recognizing Medical Emergencies',url:CI.emergencySource}]);
+  if (urgent) return emergencyAnswer(urgent);
   const result = E.evaluate(entry,state.profile);
   const followUps = Object.values(checkFollowUps(entry));
   const text = ['Your check-in includes '+result.coverage+' of '+E.metrics.length+' measurements.',
@@ -560,37 +567,56 @@ async function submitIntake(value, skip = false, file) {
   const activeSession = session;
   let next;
   try {
-    next = CI.apply(current,prompt,value,skip);
-    if (file) {
+    let kind = skip ? '' : CI.emergencyKind(value);
+    if (!kind && !skip && value.trim() && !prompt.options &&
+        !(prompt.metric && /^[\d\s.,/°]+(?:c|bpm|mm\s*hg|mg\s*\/\s*dl|hrs?|hours?)?$/i.test(value))) {
+      busy = true;
+      if (view() === 'bot') render();
+      kind = await AI.assessSafety(value,current.turns).catch(() => '');
+      if (session !== activeSession || draft() !== current) return;
+    }
+    next = kind ? CI.interrupt(current,prompt,value.trim(),kind) : CI.apply(current,prompt,value,skip);
+    if (file && !CI.urgent(next)) {
       busy = true;
       next.image = await compressImage(file);
     }
   } catch (error) {
-    if (session === activeSession) document.querySelector('#intake-form .error')?.replaceChildren(error.message);
+    if (session === activeSession && view() === 'bot') {
+      busy = false;
+      render();
+      const form = $('intake-form');
+      if (form?.elements.answer) form.elements.answer.value = value;
+      form?.querySelector('.error')?.replaceChildren(error.message);
+    }
     return;
   } finally { if (session === activeSession) busy = false; }
-  if (session !== activeSession || draft() !== current || !setDraft(next)) return;
+  if (session !== activeSession || draft() !== current) return;
   stopSpeech();
+  if (CI.urgent(next)) return finishIntake(next);
+  if (!setDraft(next)) return;
   return prepareIntakeQuestion(next);
 }
 
-async function finishIntake() {
-  const current = draft();
+async function finishIntake(current = draft()) {
   if (current?.mode !== 'chat' || busy) return;
   const entry = CI.toEntry(current,today());
   entry.sample = simulation();
   const urgent = CI.urgent({...current,values:entry.values});
   const drafts = {...state.drafts};
   delete drafts[current.env];
-  const urgentReport = urgent && current.turns.findLast(turn => turn.role === 'user' && CI.unresponsiveReport(turn.content));
-  let reply = urgentReport ? emergencyAnswer(urgentReport.content) : intakeSummary(entry,urgent);
+  const urgentReport = urgent && (current.turns.findLast(turn => turn.role === 'user' && CI.emergencyKind(turn.content) === urgent) ||
+    current.turns.findLast(turn => turn.role === 'user'));
+  let reply = urgent && urgent !== 'temperature' ? emergencyAnswer(urgent,urgentReport?.content) : intakeSummary(entry,urgent);
   const hasData = !!urgent || Object.keys(current.values).length > 0 ||
     Object.entries(current.answers).some(([key,value]) => key !== 'urgent' && value !== '') || current.image !== today()?.image && !!current.image;
   entry.summary = reply;
   if (!save({...state,drafts,records:hasData ? [...state.records.filter(item => item.env !== entry.env || item.date !== entry.date),entry] : state.records})) {
-    if (urgent && view() === 'bot') {
-      notify(reply.paragraph || reply.sections.immediateActions);
-      if (readAloud) speakReply({role:'assistant',content:reply.text,...reply});
+    if (urgent) {
+      state = {...state,drafts,dailyFlow:{...flow(),date:E.dateKey(),check:'urgent'}};
+      const safetyTurn = {...reply,role:'assistant',mode:'check',content:reply.text,urgent:true};
+      chat.push(...current.turns,safetyTurn);
+      showRoute('bot');
+      if (readAloud) speakReply(safetyTurn);
     }
     return;
   }
@@ -609,15 +635,21 @@ async function finishIntake() {
     finally { if (session === activeSession) busy = false; }
   }
   if (session !== activeSession) return;
-  const turn = {...(hasData ? reply : {}),role:'assistant',mode:'check',content:hasData ? reply.text : 'Check-in skipped.',measurements};
+  const turn = {...(hasData ? reply : {}),role:'assistant',mode:'check',content:hasData ? reply.text : 'Check-in skipped.',measurements,urgent:!!urgent,urgentKind:urgent || undefined};
   const conversation = datedTurns([...transcript,turn]);
-  if (!save({...state,dailyFlow:{...flow(),date:E.dateKey(),check:hasData ? 'done' : 'skipped'},
+  const persisted = save({...state,dailyFlow:{...flow(),date:E.dateKey(),check:urgent ? 'urgent' : hasData ? 'done' : 'skipped'},
     records:state.records.map(item => item === entry ? {...item,summary:reply} : item),
-    conversations:[...(state.conversations || []),...conversation]})) return;
+    conversations:[...(state.conversations || []),...conversation]});
+  if (!persisted && !urgent) return;
+  if (!persisted) state = {...state,dailyFlow:{...flow(),date:E.dateKey(),check:'urgent'}};
   chat.push(...conversation);
+  if (urgent && view() !== 'bot') showRoute('bot');
   if (view() === 'bot') {
     render();
     if (readAloud) speakReply(turn);
+  }
+  if (urgentReport && ['violence','self-harm','unresponsive','medical'].includes(urgent)) {
+    addEmergencyHandoff(urgentReport.content,urgent,conversation.at(-1),activeSession);
   }
 }
 
@@ -915,17 +947,30 @@ async function compressImage(file) {
 async function submitCheck(event) {
   const form = event.target;
   const current = draft();
-  if (!current || form.dataset.pending) return;
+  if (!current || busy || form.dataset.pending) return;
   const step = E.steps[current.index];
   const value = form.elements.answer.value.trim();
   const metric = E.metricByKey(step.key);
   const values = {...current.values};
+  const owner = session;
+  const skip = event.submitter?.value === 'skip';
   form.dataset.pending = 'true';
   try {
-    if (event.submitter?.value === 'skip' || (step.key === 'note' && !value)) delete values[step.key];
+    let kind = !skip && (CI.emergencyKind(value) || (step.key === 'impact' && value === 'urgent' ? 'medical' : ''));
+    if (!kind && !skip && value && !step.options && !metric) {
+      busy = true;
+      kind = await AI.assessSafety(value,[]).catch(() => '');
+      if (session !== owner || draft() !== current) return;
+      busy = false;
+    }
+    if (kind) return finishIntake(CI.interrupt(CI.create(state.env,current.date,today(),current),step,value,kind));
+    if (skip || (step.key === 'note' && !value)) delete values[step.key];
     else if (metric) values[step.key] = E.parseMetric(metric,value);
     else if (value && (!step.options || Object.hasOwn(step.options,value))) values[step.key] = value;
     else throw new Error('Enter a response or choose Skip.');
+    if (E.hasLowBodyTemperature({values})) {
+      return finishIntake(CI.interrupt(CI.create(state.env,current.date,today(),{...current,values}),step,value,'temperature'));
+    }
     if (step.key !== 'note') {
       if (setDraft({...current,values,index:current.index+1})) {
         render();
@@ -949,7 +994,7 @@ async function submitCheck(event) {
       notify('Check-in saved on this computer.');
     }
   } catch (error) { form.querySelector('.error').textContent = error.message; }
-  finally { delete form.dataset.pending; }
+  finally { if (session === owner) busy = false; delete form.dataset.pending; }
 }
 
 async function checkModel() {
@@ -970,13 +1015,23 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
   const [turn] = datedTurns([{role:'user',content:query}]);
   const history = chat.filter(item => !item.mode || item.mode === 'chat').slice(-12).map(({role,content}) => ({role,content}));
   turn.mode = mode;
-  if (!save({...state,conversations:[...(state.conversations || []),turn]})) return;
+  save({...state,conversations:[...(state.conversations || []),turn]});
+  const safetyHistory = chat.filter(item => item.date === turn.date).slice(-6);
   chat = [...chat.slice(-79),turn];
+  let kind = CI.emergencyKind(query);
+  if (!kind && mode === 'chat') {
+    busy = true;
+    if (view() === 'bot') render();
+    try { kind = await AI.assessSafety(query,safetyHistory).catch(() => ''); }
+    finally { if (session === currentSession) busy = false; }
+    if (session !== currentSession) return;
+  }
   const nextEnv = mode === 'chat' ? E.detectEnvironmentChange(query) : null;
-  const urgent = CI.emergencyReport(query);
-  if (urgent || mode !== 'guide' && E.hasLowBodyTemperature(today())) {
-    const alert = urgent ? emergencyAnswer(query) : temperatureAlert(today());
-    chat.push({...alert,role:'assistant',content:alert.text,urgent:true});
+  const lowTemperature = mode !== 'guide' && E.hasLowBodyTemperature(today());
+  const urgent = kind || (lowTemperature ? 'temperature' : '');
+  if (urgent) {
+    const alert = kind ? emergencyAnswer(kind,query) : temperatureAlert(today());
+    chat.push({...alert,role:'assistant',content:alert.text,urgent:true,urgentKind:urgent});
   } else if (nextEnv) {
     let text = E.environments[nextEnv].name+' is already the active environment.';
     if (nextEnv !== state.env) {
@@ -1024,29 +1079,31 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
   if (session === currentSession && chat.at(-1)?.role === 'assistant') {
     const [reply] = datedTurns([{...chat.at(-1),mode,date:turn.date,env:turn.env}]);
     chat[chat.length-1] = reply;
-    save({...state,conversations:[...(state.conversations || []),reply]});
+    const dailyFlow = urgent ? {...flow(),date:E.dateKey(),check:'urgent'} : state.dailyFlow;
+    if (!save({...state,dailyFlow,conversations:[...(state.conversations || []),reply]}) && urgent) state = {...state,dailyFlow};
   }
   if (session === currentSession && view() === 'bot') {
     render();
     $('chat-form')?.elements.query.focus();
     if (readAloud) speakReply(chat.at(-1));
   }
-  if (session === currentSession && urgent && CI.unresponsiveReport(query)) {
-    const immediate = chat.at(-1);
-    void AI.emergencyHandoff(query).then(handoff => {
-      if (!handoff || session !== currentSession || !immediate?.urgent) return;
-      const update = reply => reply === immediate ? {...reply,handoff} : reply;
-      if (!save({...state,conversations:(state.conversations || []).map(update)})) return;
-      chat = chat.map(update);
-      const last = $('chat-log')?.lastElementChild;
-      if (view() === 'bot' && !draft() && chat.at(-1)?.handoff === handoff && last?.classList.contains('assistant')) {
-        const note = document.createElement('p');
-        note.className = 'micro';
-        note.textContent = 'Report to responders: “'+handoff+'”';
-        last.append(note);
-      }
-    }).catch(() => {});
-  }
+  if (session === currentSession && kind) addEmergencyHandoff(query,kind,chat.at(-1),currentSession);
+}
+
+function addEmergencyHandoff(report,kind,immediate,owner) {
+  void AI.emergencyHandoff(report,kind).then(handoff => {
+    if (!handoff || session !== owner || !immediate?.urgent) return;
+    const update = reply => reply === immediate ? {...reply,handoff} : reply;
+    if (!save({...state,conversations:(state.conversations || []).map(update)})) return;
+    chat = chat.map(update);
+    const last = $('chat-log')?.lastElementChild;
+    if (view() === 'bot' && !draft() && chat.at(-1)?.handoff === handoff && last?.classList.contains('assistant')) {
+      const note = document.createElement('p');
+      note.className = 'micro';
+      note.textContent = 'Report to responders: "'+handoff+'"';
+      last.append(note);
+    }
+  }).catch(() => {});
 }
 
 function reviewSearch(data) {

@@ -13,7 +13,7 @@ The WinForms host serves a bundled HTML, CSS and JavaScript interface through We
 
 For grounded questions, NETIN ranks passages from the imported Markdown and includes the best matches in the model request. The response includes the reference passages it used. The public evaluation library contains short summaries and source links. Judges and operators can load a mission-specific folder.
 
-When a report matches a recognized emergency, NETIN displays the immediate action before sending any model request. For an unresponsive person, Qwen can extract an exact observation from the report into the handoff. This keeps medical instructions separate from text generation about the event.
+NETIN screens responses in the check-in and chat for emergencies. Recognized warning signs trigger immediate action before any model request. For less direct reports, Qwen uses the recent conversation to assess urgency before the app continues. An urgent assessment stops the routine check-in and displays the appropriate directions for Earth or the onboard emergency procedure. Qwen can also extract an exact observation for the handoff.
 
 The two demo profiles are synthetic. Readings flagged for review in the demo use demonstration reference values. The project has undergone scenario and software checks, and requires clinical validation for operational use.
 

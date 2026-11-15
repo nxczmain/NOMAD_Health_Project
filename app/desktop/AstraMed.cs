@@ -12,7 +12,7 @@ using Microsoft.Web.WebView2.WinForms;
 
 [assembly: AssemblyTitle("NETIN")]
 [assembly: AssemblyDescription("Astronaut health workstation")]
-[assembly: AssemblyVersion("3.1.0.0")]
+[assembly: AssemblyVersion("3.1.1.0")]
 
 internal static class Program
 {

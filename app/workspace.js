@@ -25,7 +25,7 @@ const flow = () => state.dailyFlow?.date === E.dateKey() ? state.dailyFlow : {};
 const markFlow = (key, status = 'done') => save({...state,dailyFlow:{...flow(),date:E.dateKey(),[key]:status}});
 const dailyJournal = () => (state.journals || []).find(item => item.date === E.dateKey());
 const bodyRecords = () => state.body || [];
-const flowStep = () => Object.keys(flowLabels).find(key => !flow()[key]);
+const flowStep = () => flow().check === 'urgent' ? undefined : Object.keys(flowLabels).find(key => !flow()[key]);
 const stageField = (id, value) => field('Mission stage','<select id="'+id+'" name="stage" required>'+stageOptions(value)+'</select>');
 const card = (title, content, action = '', extra = '') => '<section class="card '+extra+'"><div class="card-head"><h2>'+title+'</h2>'+action+'</div>'+content+'</section>';
 const empty = text => '<p class="muted">'+text+'</p>';
@@ -35,13 +35,14 @@ const portrait = (name, source, extra = '') => source ? '<img class="portrait '+
 
 function workflow() {
   const current = flowStep();
-  const status = {done:'Done',skipped:'Skipped'};
+  const status = {done:'Done',skipped:'Skipped',urgent:'Stopped for urgent help'};
   return '<ol class="workflow" aria-label="Daily routine">'+Object.entries(flowLabels).map(([key,label]) =>
     '<li class="'+(key === current ? 'current' : flow()[key] || '')+'"'+(key === current ? ' aria-current="step"' : '')+'><span class="step-dot" aria-hidden="true"></span>'+
     '<span>'+label+'</span><small>'+ (status[flow()[key]] || (key === current ? 'In progress' : 'Pending'))+'</small></li>').join('')+'</ol>';
 }
 
 function resumeFlow() {
+  if (flow().check === 'urgent') return showRoute('bot');
   const step = flowStep();
   if (step === 'photo') return openCamera('routine');
   if (step === 'check') return beginIntake();
@@ -59,6 +60,9 @@ function vitals(entry, keys = Object.keys(metricNames)) {
 }
 
 function medicalFlags(entry) {
+  if (flow().check === 'urgent') {
+    return '<p class="notice critical">An urgent concern was reported today. Follow the emergency instructions in the Assistant.</p>';
+  }
   if (!entry) return empty('No check-in in this stage yet.');
   const review = CI.differingReadings(entry).map(metric => metricNames[metric.key]);
   if (E.hasLowBodyTemperature(entry) || entry.values.impact === 'urgent') {
@@ -356,15 +360,16 @@ async function workspaceSubmit(form) {
 function assistantView() {
   const current = draft()?.mode === 'chat' ? draft() : null;
   const history = chat.slice(-80);
-  const finished = !current && flow().check && !flow().motor;
+  const stopped = !current && flow().check === 'urgent';
+  const finished = !current && !stopped && flow().check && !flow().motor;
   const messages = history.map((turn,index) => '<article class="message '+turn.role+'"><span class="folio">'+
     (turn.role === 'user' ? 'You' : 'NETIN')+'</span>'+(turn.role === 'assistant' ? paragraphReply(turn) : '<p>'+escape(turn.content)+'</p>')+
     (turn.role === 'assistant' ? button('Listen','speak-reply','voice-button','data-index="'+(chat.length-history.length+index)+'"') : '')+
     '</article>').join('');
-  const controls = current ? button('Save and finish','end-chat-check','compact',busy ? 'disabled' : '') :
+  const controls = stopped ? '' : current ? button('Save and finish','end-chat-check','compact',busy ? 'disabled' : '') :
     button('Daily check-in','assist-check','compact',busy ? 'disabled' : '');
   return pageHead('',current ? 'Daily check-in' : 'Assistant',current ? '' : '',controls)+
-    (current || finished ? workflow() : '')+
+    (current || finished || stopped ? workflow() : '')+
     '<section class="card assistant-shell"><div class="assistant-toolbar">'+
     (finished ? button('Continue to motor skills','next-motor','primary') : '<strong>NETIN</strong>')+
     '<div class="actions">'+button('Voice','toggle-speech','compact','aria-pressed="'+readAloud+'"')+
