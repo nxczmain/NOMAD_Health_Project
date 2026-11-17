@@ -6,7 +6,7 @@
   const emergencySource = 'https://medlineplus.gov/ency/article/001927.htm';
   const urgentPrompt = 'Before we begin, are you having trouble breathing, chest pain, sudden confusion, fainting, or bleeding that will not stop? Are you worried you might hurt yourself or someone else right now?';
   const yesNo = {yes:'Yes',no:'No',unsure:'Not sure'};
-  const measures = ['temp','pulse','pressure','sleep','mood','glucose'];
+  const measures = ['sleep','glucose','mood'];
   const symptomQuestions = {
     nausea: 'Have you vomited or had trouble keeping fluids down?',
     dizziness: 'Does it happen when you move or change position?',
@@ -33,9 +33,6 @@
     mood: 'Is there anything you want the crew medical officer to know about how you are feeling?'
   };
   const measurementQuestions = {
-    temp: 'Where and how did you take the temperature, and was the method different from usual?',
-    pulse: 'Were you resting, exercising, or feeling symptoms when you measured your pulse?',
-    pressure: 'Were you seated and at rest when you took the blood pressure reading?',
     sleep: 'Was the shorter sleep due to a schedule change, waking up, or difficulty falling asleep?',
     mood: 'What affected your mood today, and did it make your duties harder?',
     glucose: 'When did you last eat relative to the glucose measurement?'
@@ -47,7 +44,8 @@
   const normalize = language.fold;
 
   function statusUpdate(text) {
-    let wording = normalize(text).replace(/\bstable and (?=(?:good|fine|well|okay|better)\b)/g,'');
+    let wording = normalize(text).replace(/\bstable and (?=(?:good|fine|well|okay|better)\b)/g,'')
+      .replace(/\b(?:both )?(?:physically and (?:emotionally|mentally)|(?:emotionally|mentally) and physically|fisica(?:mente)? y (?:emocional|mental)mente)\b/g,'on both fronts');
     const correction = /\bi (?:just|already) told you (?:that )?(?:i (?:was|am) feeling|im feeling) ([\w ]+)[.!\s]*$/.exec(wording);
     if (correction && !emergencyKind(text) &&
         !/\b(?:still|sigo|empeor\w*|i (?:feel|have|am) (?:dizzy|sick|in pain|nauseous)|now i have)\b/.test(wording)) {
@@ -56,9 +54,9 @@
     const clauses = wording.split(/[,!;\n]+|\.(?!\d)|\b(?:but|pero|and|y)\b/)
       .map(clause => clause.trim()).filter(Boolean);
     const better = /^(?:(?:i (?:feel|am)|im|feeling) (?:feeling )?|me siento |ya estoy )?(?:much |a lot |a little |mucho |bastante |un poco )?(?:better|mejor)(?: now| today| than yesterday| this morning| after (?:sleeping|resting)| hoy| que ayer| despues de (?:dormir|descansar))?(?: thanks| gracias)?$/;
-    const well = /^(?:(?:i (?:feel|am)|im) (?:feeling )?(?:fine|well|good|okay|ok)|(?:all|everything is) good|me siento bien|(?:ya )?estoy bien|todo bien)(?: now| today| hoy| ahora)?(?: thanks| gracias)?$/;
+    const well = /^(?:(?:i (?:feel|am)|im) (?:feeling )?(?:fine|well|good|okay|ok)|(?:all|everything is) good|me siento bien|(?:ya )?estoy bien|todo bien)(?: (?:now|today|hoy|ahora|(?:(?:in|on) )?both (?:ways|respects|fronts))){0,2}(?: thanks| gracias)?$/;
     const cleared = /^(?:no (?:more )?(?:new )?(?:symptoms|pain|headache|nausea|dizziness)(?: now| today| anymore)?|i (?:dont have|no longer have) (?:any |a )?(?:symptoms|pain|headache|nausea|dizziness)(?: now| anymore)?|(?:the |my )?(?:pain|headache|dizziness|nausea) is gone|ya no (?:me duele (?:la cabeza|el brazo|la pierna)|tengo (?:dolor|sintomas|mareos|nauseas))|sin (?:sintomas|molestias|dolor))$/;
-    const reading = /^(?:i )?(?:(?:slept|dormi) (?:only |solo )?\d+(?:\.\d)? (?:hours?|horas?|h)(?: last night| anoche)?|(?:my |mi )?(?:pulse|pulso|heart rate) (?:is |was |es )?\d+ bpm|(?:my |mi )?(?:mood|animo) (?:is |was |es )?\d+\s*\/\s*10)$/;
+    const reading = /^(?:i )?(?:(?:slept|dormi) (?:only |solo )?\d+(?:\.\d)? (?:hours?|horas?|h)(?: last night| anoche)?|(?:my |mi )?(?:pulse|pulso|heart rate) (?:is |was |es )?\d+ bpm|(?:my |mi )?(?:mood|animo) (?:is |was |es )?\d+\s*\/\s*10|(?:my |mi )?(?:glucose|glucosa|blood sugar) (?:is |was |es )?\d+\s*mg\s*\/\s*dl)$/;
     if (!clauses.length || !clauses.every(clause => better.test(clause) || well.test(clause) || cleared.test(clause) ||
         reading.test(clause) || /^(?:thanks|gracias|nothing else|nada mas)$/.test(clause))) return '';
     return clauses.some(clause => better.test(clause) || /\b(?:gone|anymore|ya no)\b/.test(clause)) ? 'better' :
@@ -174,7 +172,7 @@
     if (!Object.hasOwn(answers,'moodImpact') && ((values.mood != null && values.mood <= 6) || symptomTopic(current) === 'mood')) {
       return [{key:'moodImpact',prompt:'How much did your mood affect your focus or duties?',options:E.dutyImpact,freeText:true,optional:true}];
     }
-    if (!Object.hasOwn(answers,'context') && (personal.changedEnvironment || symptomTopic(current) === 'exposure')) {
+    if (answers.symptoms && !Object.hasOwn(answers,'context') && (personal.changedEnvironment || symptomTopic(current) === 'exposure')) {
       return [{key:'context',prompt:E.environments[current.env].question,optional:true}];
     }
     if (!Object.hasOwn(answers,'note')) return [{key:'note',prompt:'Anything else you want to add before saving? You can attach a photo.',optional:true}];
@@ -183,9 +181,27 @@
 
   function question(current) {
     const available = questions(current);
-    const next = available.find(item => item.key === current.next?.key);
-    const selected = next ? {...next,prompt:current.next.prompt} : available[0];
+    const selected = available.find(item => isAdaptiveQuestion(item) && item.key === current.next?.key) || available[0];
     return selected && current.acknowledgment ? {...selected,prompt:current.acknowledgment+' '+selected.prompt} : selected;
+  }
+
+  function isAdaptiveQuestion({key}) {
+    return key !== 'symptoms' && (symptomFields.includes(key) || key === 'moodImpact');
+  }
+
+  function recap(current, followUps) {
+    const {answers,values} = current;
+    const update = statusUpdate(answers.statusUpdate);
+    const report = update ? 'You reported feeling '+(update === 'better' ? 'better' : 'well')+' today.' :
+      answers.symptoms ? 'You reported “'+answers.symptoms+'”.' :
+        Object.hasOwn(answers,'symptoms') ? 'You reported no current concerns.' : '';
+    const recorded = measures.filter(key => typeof answers[key] === 'number' && values[key] != null).map(key => {
+      const metric = E.metricByKey(key);
+      return metric.label.toLowerCase()+' '+E.format(values[key])+' '+metric.unit;
+    });
+    const text = [report, recorded.length ? 'Recorded '+recorded.join(', ')+'.' : '', followUps[0]].filter(Boolean).join(' ') ||
+      'Your check-in was saved.';
+    return {text,paragraph:text,followUps};
   }
 
   function unresponsiveReport(text) {
@@ -421,6 +437,6 @@
     return entry;
   }
 
-  root.NetinCheckIn = {create,question,questions,restore,apply,applyContext,urgent,toEntry,differingReadings,symptomTopic,symptomQuestions,moodReasonReported,
+  root.NetinCheckIn = {create,question,questions,isAdaptiveQuestion,recap,restore,apply,applyContext,urgent,toEntry,differingReadings,symptomTopic,symptomQuestions,moodReasonReported,
     statusUpdate,routineResponse,trainingScenario,bloodCough,emergencyKind,emergencyReply,interrupt,emergencySource};
 })(globalThis);

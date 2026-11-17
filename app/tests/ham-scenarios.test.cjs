@@ -55,6 +55,52 @@ test('01 Daily check-in · the exact misspelling in the screenshot is understood
   assert.equal(CI.restore(old).answers.onset,undefined);
 });
 
+test('Mateo’s wellness reply clears the old concern and leads to only three routine readings', () => {
+  let check = CI.create('moon','2026-11-16',null,null,{
+    name:'Mateo',recentConcern:'I felt mild nausea and unsteadiness after surface training.',changedEnvironment:true
+  });
+  check = replyToCheckIn(check,'No');
+  assert.match(CI.question(check).prompt,/nausea and unsteadiness/);
+  check = replyToCheckIn(check,'I feel good on both ways');
+  assert.equal(check.answers.symptoms,'');
+  assert.equal(check.answers.statusUpdate,'I feel good on both ways');
+  assert.match(CI.question(check).prompt,/glad you’re feeling well.*last 24 hours/);
+  check.next = {key:'sleep',prompt:'How many hours did you sleep in the last 2:48 hours?'};
+  assert.doesNotMatch(CI.question(check).prompt,/2:48/);
+  for (const [key,answer] of [['sleep','8 h'],['glucose','96 mg/dL'],['mood','8/10'],['note','no']]) {
+    assert.equal(CI.question(check).key,key);
+    check = replyToCheckIn(check,answer);
+  }
+  assert.equal(CI.question(check),undefined);
+  const recap = CI.recap(check,[]);
+  assert.match(recap.text,/You reported feeling well today/);
+  assert.match(recap.text,/sleep duration 8 h/);
+  assert.match(recap.text,/glucose 96 mg\/dL/);
+  assert.doesNotMatch(recap.text,/nausea|unsteadiness|torres|forearm|coordination drill/i);
+});
+
+test('keeps symptom follow-ups for new concerns and preserves previously recorded vitals', () => {
+  const well = replyToCheckIn(makeCheckIn(),'I feel good physically and emotionally.');
+  assert.equal(well.answers.symptoms,'');
+  const active = replyToCheckIn(makeCheckIn(),'I feel good on both ways, but I still feel dizzy when I stand.');
+  assert.equal(CI.symptomTopic(active),'dizziness');
+  assert.ok(CI.questions(active).some(isSymptomQuestion));
+  const restored = CI.restore({...well,values:{...well.values,temp:38,pulse:110,pressure:[118,76]},
+    answers:{urgent:'no',symptoms:'I feel good on both ways',impact:'mild'},next:{key:'temp',prompt:'What was your temperature?'}});
+  assert.deepEqual(Array.from(CI.questions(restored),item=>item.key),['sleep','glucose','mood']);
+  const preserved = CI.toEntry(restored);
+  assert.equal(preserved.values.temp,38);
+  assert.equal(preserved.values.pulse,110);
+});
+
+test('check-in uses the selected follow-up key but keeps NOMAD’s authored question', async () => {
+  const fake = load(() => ({key:'symptomDetail',covered:[],question:'I am Dr. Lina Torres. What was your pulse?'}));
+  const current = replyToCheckIn(makeCheckIn(),'I have pain in my wrist.');
+  const plan = await fake.AI.checkInQuestion(CI.questions(current).filter(CI.isAdaptiveQuestion),current,'Earth');
+  assert.equal(plan.next.key,'symptomDetail');
+  assert.equal(CI.question({...current,next:plan.next}).prompt,CI.symptomQuestions.pain);
+});
+
 test('02 Daily check-in · an explicit correction stops the follow-up loop', () => {
   let check = replyToCheckIn(makeCheckIn(),'I feel dizzy.');
   assert.ok(isSymptomQuestion(CI.question(check)));

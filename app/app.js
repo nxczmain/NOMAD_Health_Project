@@ -784,15 +784,15 @@ function speakIntake() {
 
 async function prepareIntakeQuestion(current, openAssistant = false) {
   const available = CI.questions(current);
+  const adaptive = available.filter(CI.isAdaptiveQuestion);
   const activeSession = session;
-  const needsModel = available.length && !current.next && !current.acknowledgment &&
-    !['urgent','symptoms'].includes(available[0].key) && !['offline','missing'].includes(model);
+  const needsModel = adaptive.length && !current.next && !['offline','missing'].includes(model);
   if (needsModel) { busy = true; hamChatWork = 'check'; }
   if (openAssistant) showRoute('bot');
   else if (needsModel && view() === 'bot') render();
   if (!available.length) return finishIntake();
   if (needsModel) {
-    const planned = await AI.checkInQuestion(available,current,environment().name).catch(() => null);
+    const planned = await AI.checkInQuestion(adaptive,current,environment().name).catch(() => null);
     if (session !== activeSession) return;
     busy = false;
     hamChatWork = '';
@@ -844,7 +844,7 @@ async function submitIntake(value, skip = false, file) {
     let kind = skip ? '' : CI.emergencyKind(value);
     const freeResponse = !prompt.options || prompt.freeText && !Object.hasOwn(prompt.options,value.trim());
     if (!kind && !skip && value.trim() && freeResponse &&
-        !(prompt.metric && /^[\d\s.,/°]+(?:c|bpm|mm\s*hg|mg\s*\/\s*dl|hrs?|hours?)?$/i.test(value))) {
+        !(prompt.metric && /^[\d\s.,/°]+(?:c|bpm|mm\s*hg|mg\s*\/\s*dl|h|hrs?|hours?)?$/i.test(value))) {
       busy = true;
       hamChatWork = 'check';
       if (view() === 'bot') render();
@@ -876,7 +876,7 @@ async function submitIntake(value, skip = false, file) {
   return prepareIntakeQuestion(next);
 }
 
-async function finishIntake(current = draft()) {
+function finishIntake(current = draft()) {
   if (current?.mode !== 'chat' || busy) return;
   const entry = CI.toEntry(current,state.records.find(item => item.env === current.env && item.date === current.date));
   entry.sample = simulation();
@@ -885,7 +885,8 @@ async function finishIntake(current = draft()) {
   delete drafts[current.env];
   const urgentReport = urgent && (current.turns.findLast(turn => turn.role === 'user' && CI.emergencyKind(turn.content) === urgent) ||
     current.turns.findLast(turn => turn.role === 'user'));
-  const reply = urgent && urgent !== 'temperature' ? emergencyAnswer(urgent,urgentReport?.content) : intakeSummary(entry,urgent);
+  const reply = urgent === 'temperature' ? temperatureAlert(entry) :
+    urgent ? emergencyAnswer(urgent,urgentReport?.content) : CI.recap(current,Object.values(checkFollowUps(CI.toEntry(current))));
   const hasData = !!urgent || Object.keys(current.values).length > 0 ||
     Object.entries(current.answers).some(([key,value]) => key !== 'urgent' && value !== '') || current.image !== today()?.image && !!current.image;
   if (urgent) { entry.emergencyId = crypto.randomUUID(); assistantTab = 'check'; }
@@ -913,21 +914,6 @@ async function finishIntake(current = draft()) {
   else if (view() === 'bot') render();
   if (urgent && urgentReport && ['violence','self-harm','self-and-others','unresponsive','medical'].includes(urgent)) {
     addEmergencyHandoff(urgentReport.content,urgent,turn,owner);
-  }
-  if (hasData && !urgent && !current.answers.statusUpdate) {
-    try {
-      const recentResponses = current.turns.filter(item => item.role === 'user').map(item => item.content.slice(0,240));
-      const enhanced = await AI.checkInSummary({...crewContext('daily',entry.details.map(item => item.answer).join(' ')),recentResponses},checkFollowUps(entry));
-      if (owner !== session || !state.records.includes(entry) || !state.conversations.includes(turn)) return;
-      const revised = {...turn,...enhanced,content:enhanced.text};
-      if (!save({...state,records:state.records.map(item => item === entry ? {...item,summary:enhanced} : item),
-        conversations:state.conversations.map(item => item === turn ? revised : item)})) return;
-      if (view() === 'bot' && assistantTab === 'check' && !draft() && E.dateKey() === current.date) {
-        render();
-        presentHam(revised);
-      }
-      return;
-    } catch { /* The local summary and conversation are already saved. */ }
   }
   if (owner === session && view() === 'bot' && assistantTab === 'check') presentHam(turn);
 }
