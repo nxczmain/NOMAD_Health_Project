@@ -18,7 +18,7 @@ Record daily observations, track changes over time, and prepare a handoff for th
 
 ## Contents
 
-[Mission problem](#the-mission-problem) · [Screenshots](#see-nomad-in-action) · [Workflow](#from-daily-check-in-to-crew-handoff) · [Installation](#installation) · [Judge walkthrough](#judge-walkthrough) · [Architecture and tests](#how-it-works) · [Repository and research](#repository-and-research) · [Team](#team)
+[Mission problem](#the-mission-problem) · [Screenshots](#see-nomad-in-action) · [Ham](#meet-ham) · [Workflow](#from-daily-check-in-to-crew-handoff) · [Installation](#installation) · [Judge walkthrough](#judge-walkthrough) · [Architecture and tests](#how-it-works) · [Repository and research](#repository-and-research) · [Team](#team)
 
 ## The mission problem
 
@@ -41,6 +41,44 @@ Maya Chen’s Earth Orbit demo shows the daily health routine and the latest sim
 <summary><strong>Assistant · Chat with Ham</strong></summary>
 
 ![NOMAD Assistant screen showing a demo conversation with Ham and the read-aloud controls](docs/images/nomad-assistant.png)
+
+</details>
+
+## Meet Ham
+
+<p align="center">
+  <img src="docs/images/ham-avatar.png" width="160" height="160" alt="Ham, NOMAD's pixel-art chimpanzee avatar">
+</p>
+
+Ham is NOMAD’s onboard **AI assistant**, represented by a pixel-art chimpanzee. It runs on the crew workstation using Qwen3 through Ollama. Ham helps crew members describe what they feel, find relevant mission references and organize their observations for the crew medical officer, who makes clinical decisions.
+
+| What Ham does | What that looks like in NOMAD |
+| --- | --- |
+| **Adapts the daily check-in** | Acknowledges how the crew member feels now, keeps track of readings they already shared and asks about the next missing detail. |
+| **Answers questions and offers support** | Uses the latest message in context. For physical health questions, Ham can show passages from the local Markdown library. In Mental Health, it responds in plain English and suggests a practical next step. |
+| **Helps prepare an urgent handoff** | NOMAD’s local safety checks trigger built-in steps as soon as they recognize an urgent report. Ham can keep the crew member’s original wording for responders. |
+| **Guides the daily routine** | Shows what’s next on Home, gives directions for the daily photo and motor test, and can summarize saved journal entries. Crew members can adjust read-aloud and animation in Settings. |
+| **Reviews simulated ultrasound images** | With the optional Qwen3-VL model, Ham describes visible features in synthetic training images the crew uploads. |
+
+### Ham in the app
+
+These captures use Maya Chen’s demo profile and simulated inputs.
+
+**Home · The next step in the daily routine**
+
+![Home card showing Ham and a button to take the next daily photo](docs/images/ham-home.png)
+
+<details>
+<summary><strong>Assistant · An adaptive daily check-in</strong></summary>
+
+![Ham acknowledges that Maya feels better and moves on to a reading she has yet to share](docs/images/ham-daily-check-in.png)
+
+</details>
+
+<details>
+<summary><strong>Mental Health · Support during a shift change</strong></summary>
+
+![Ham responds to a simulated message about feeling low after switching to the night shift](docs/images/ham-mental-health.png)
 
 </details>
 
