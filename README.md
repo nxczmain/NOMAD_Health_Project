@@ -52,6 +52,8 @@ Maya Chen’s Earth Orbit demo shows the daily health routine and the latest sim
 
 Ham is NOMAD’s onboard **AI assistant**, represented by a pixel-art chimpanzee. It runs on the crew workstation using Qwen3 through Ollama. Ham helps crew members describe what they feel, find relevant mission references and organize their observations for the crew medical officer, who makes clinical decisions.
 
+The character is inspired by Ham, the chimpanzee who flew into space aboard NASA’s Mercury-Redstone 2 mission on January 31, 1961. [NASA archival photo and mission details](https://www.nasa.gov/image-article/chimpanzee-ham-with-trainers/)
+
 | What Ham does | What that looks like in NOMAD |
 | --- | --- |
 | **Adapts the daily check-in** | Acknowledges how the crew member feels now, keeps track of readings they already shared and asks about the next missing detail. |
