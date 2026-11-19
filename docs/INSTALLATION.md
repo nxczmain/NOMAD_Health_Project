@@ -1,81 +1,52 @@
-# Install and evaluate NOMAD on Windows
+# Install or update NOMAD on Windows
 
-Run NOMAD from a folder on your own Windows PC. The [GitHub download](https://github.com/nxczmain/Nasa-Space-Apps/raw/refs/heads/main/downloads/NETIN-Windows-x64.zip) includes the app, two demo profiles and a starter reference library. Install Ollama and Qwen on the same PC.
+[Download NETIN-Windows-x64.zip](https://github.com/nxczmain/NOMAD_Health_Project/releases/latest/download/NETIN-Windows-x64.zip). The ZIP contains NOMAD, its demo profiles, synthetic ultrasound samples and the indexed research library.
 
-## What you need
+## First installation
 
-- A Windows 10 22H2 or Windows 11 computer with an x64 processor. Run this on a local Windows session.
-- Microsoft Edge WebView2 Evergreen Runtime. Windows 11 normally includes it. If NOMAD reports it missing, install the [Microsoft Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section).
-- .NET Framework 4.8 or later. If Windows reports it missing, install it from [Microsoft .NET Framework downloads](https://dotnet.microsoft.com/en-us/download/dotnet-framework).
-- [Ollama for Windows](https://ollama.com/download/windows) and the [Qwen3 4B model](https://ollama.com/library/qwen3:4b). The model download is about 2.5 GB. Allow additional storage for Ollama and the extracted app.
-- Internet access for setup downloads. After setup, you can run the app and model locally. A camera is optional for the demo.
-
-## Download and run
-
-1. Download [NETIN-Windows-x64.zip](https://github.com/nxczmain/Nasa-Space-Apps/raw/refs/heads/main/downloads/NETIN-Windows-x64.zip). Right-click it, choose **Extract All**, and extract it to a folder you can write to on your PC, such as `Documents\NETIN`.
-2. Install and open Ollama. Then open a new PowerShell window and run:
+1. Use Windows 10 22H2 or Windows 11 (x64), with [.NET Framework 4.8](https://dotnet.microsoft.com/en-us/download/dotnet-framework) and [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section). Install the runtimes if Windows reports either is missing.
+2. Right-click the ZIP and choose **Extract All**. Choose a writable folder such as `Documents\NOMAD`. Keep `interface` and the WebView2 DLLs beside `NETIN.exe`.
+3. Install and start [Ollama for Windows](https://ollama.com/download/windows). In a new PowerShell window, download both models and check that both appear. Allow about 6 GB for the models.
 
    ```powershell
    ollama pull qwen3:4b
+   ollama pull medgemma1.5:4b
    ollama list
    ```
 
-   Wait for the download to finish. Confirm that `qwen3:4b` appears in the list. Leave Ollama running in the background. If it is already installed and the model is listed, proceed directly to the next step.
-3. Open `NETIN.exe` from the extracted folder. Keep the `interface` folder and the WebView2 DLLs next to it. NOMAD connects to Ollama automatically on `http://127.0.0.1:11434`. No key or cloud account is needed.
-4. In the welcome screen, choose **Earth Orbit** for Maya or **Moon** for Mateo. Then pick the astronaut and enter the demo password. After signing in, **Home → Change stage** lets you review and confirm a change for the whole crew on this installation.
+4. Leave Ollama running. Open `NETIN.exe` from the extracted folder. It connects to Ollama on `127.0.0.1:11434`.
 
-   | Demo astronaut | Historical stage | Password |
+   | Mission stage | Demo astronaut | Demo password |
    | --- | --- | --- |
-   | Maya Chen | Earth Orbit | `OrbitDemo26` |
-   | Mateo Ruiz | Moon | `LunarDemo26` |
+   | Earth Orbit | Maya Chen | `OrbitDemo26` |
+   | Moon | Mateo Ruiz | `LunarDemo26` |
 
-5. Open **Daily check-in** from the Home routine. Choose **Save and finish** to save what you have recorded. If you try the **Daily photo** step, select **Take photo** to start the countdown. Select **Use photo** to save the preview or **Retake** to try again. You can continue when a camera is unavailable.
-6. In **Settings → Check connection**, look for **Qwen is ready**. Then complete **Install the research Markdown library** below to give Ham access to the full project documents. The included `ReferenceLibrary` folder supplies the smaller demo library.
+5. In **Settings**, select **Check connection** for Qwen. Under **Medical model**, `medgemma1.5:4b` is the default. Select **Test and use model** to verify that Ollama can load it. If this installation previously selected another model, enter `medgemma1.5:4b` before testing.
 
-## Install the research Markdown library
+The first response may take longer while Ollama loads the models. Once they are downloaded, both run on the same computer. The [MedGemma model and terms](https://ollama.com/library/medgemma1.5:4b) are listed in Ollama's catalog.
 
-**Download and import the Markdown data as part of setup so Ham can use the full research collection.** The Windows app ZIP includes a small demo library; the complete research documents are in the repository's [`Investigation (.md)` folder](../Investigation%20%28.md%29/).
+## Update an existing installation
 
-1. Download the [repository ZIP](https://github.com/nxczmain/Nasa-Space-Apps/archive/refs/heads/main.zip), or use **Code → Download ZIP** on GitHub, and extract it completely.
-2. Open the extracted repository folder. Copy the entire `Investigation (.md)` folder, including its topic subfolders and `.md` files, into your NOMAD installation folder:
+1. Close NOMAD. Back up the installation folder, particularly `Profile` if it exists.
+2. Extract the new ZIP to a temporary folder. Copy its contents over the existing installation, allowing file replacements while keeping the existing `Profile` folder. This updates `NETIN.exe` as well as the interface and library.
+3. With the same Ollama instance used by your installation running, run `ollama pull medgemma1.5:4b` and confirm both models in `ollama list`. Reopen NOMAD and test the model in **Settings**.
 
-   | Location | What belongs there |
-   | --- | --- |
-   | `Documents\NETIN\NETIN.exe` | The application |
-   | `Documents\NETIN\Investigation (.md)\` | The complete Markdown collection with its topic subfolders |
+For an installation that uses a custom Ollama port or separate model folder, run the pull against that server. For example, the `Abrir-NOMAD.cmd` workspace launcher uses port `11435` and the workspace's `Models` directory. Start that launcher and set `$env:OLLAMA_HOST = '127.0.0.1:11435'` in the PowerShell session before pulling so the existing server receives it.
 
-   Another local location also works; select that folder when importing.
-3. In NOMAD, sign in and open **Documents → Load Markdown folder**. Select the parent **Investigation (.md)** folder to include every topic. Confirm the folder selection if prompted.
-4. Wait for **Reading … documents** to finish. Confirm that **Local library** lists the files, then search for a topic and open a document. There are **503 research documents plus a README**, so importing the complete folder normally lists **504 Markdown files**.
-5. With Ollama running and **Settings → Check connection → Qwen is ready**, open **Assistant** and ask “What does the research library say about sleep and fatigue?” Review the reference passages included with the answer.
+## Try the update
 
-**Import the folder after copying it.** NOMAD uses the imported Markdown to retrieve relevant passages and supply context to Qwen. Use **Load Markdown folder** again after adding or editing files. Each import replaces the previously loaded library, so select the complete parent folder each time.
-
-The [PDF originals](../investigation/) are available for checking figures, tables and formatting. See the [research library guide](RESEARCH.md) for the topic index and checksums.
-
-## A short evaluation
-
-| What to try | Where to look |
-| --- | --- |
-| Finish the daily check-in and describe any change | **Assistant** creates a paragraph and **Home** keeps it with readings and relevant follow-ups |
-| Write a journal entry with two or three distinct details | **Home → Journal** saves automatically and shows Ham's summary when available |
-| Ask “How can an irregular sleep schedule affect my ability to work?” | **Assistant** uses Qwen and cites the relevant sleep and fatigue reference |
-| Send the drill “My crewmate is unresponsive but breathing. What should I do?” | **Assistant** displays an immediate alert and Qwen can extract the reported observation for the handoff |
-| Open earlier readings, symptom history and skills | **Health** and **Records** show the demo trend and 30 days of sample check-ins, journal entries and motor results |
-| Analyze a synthetic training image | Run `ollama pull qwen3-vl:4b`, then open **Health → Physical → Ultrasound simulation**. Choose an image from `Ultrasound Samples`, confirm it is simulated and select **Analyze with Ham** |
-| Return to the selector and change the stage | Both profiles use the new current stage. Previously recorded items retain their original stage |
-
-The [20 simulated Ham conversations](HAM-SIMULATIONS.md) provide reproducible inputs for check-in, physical health, mood support and emergencies.
-
-For the emergency drill, use a demo profile with simulated data. NOMAD is a research prototype. Real emergency care follows the crew medical officer, emergency services and approved mission procedures.
+- In **Documents**, the bundled library loads on startup. It includes the ISS medical kit, references for CPR in microgravity and 44 NIMH publications linked to their sources. **Load Markdown folder** is available for a custom library.
+- In a demo profile, try the [practice scenarios](HAM-SIMULATIONS.md). Open **Sources** to see the relevant passage or linked original.
+- In **Health → Physical → Ultrasound simulation**, choose a file from `Ultrasound Samples` and confirm it is synthetic before analyzing it.
+- Use **Health → Medical Supplies** to record confirmed stock and **Medications** to review recorded doses.
 
 ## Troubleshooting
 
-| Symptom | What to do |
+| Symptom | What to check |
 | --- | --- |
-| Windows cannot open NOMAD | Confirm that the ZIP is fully extracted and its DLLs are beside `NETIN.exe`. Check the WebView2 and .NET requirements above |
-| Ollama is offline | Launch Ollama from the Windows Start menu. Check `Invoke-RestMethod http://127.0.0.1:11434/api/tags` from PowerShell |
-| Qwen is missing | Run `ollama pull qwen3:4b` and check the connection again |
-| Answers lack document evidence | In **Documents → Load Markdown folder**, import `Investigation (.md)` for the complete research library or `ReferenceLibrary` for the demo. Wait for loading to finish and confirm the files are listed |
-| Old sample dates or a different stage appear | Use **Records** for all stages and select the historical stage for trends. Extract the package into a new folder for a fresh evaluation, or use **Delete** with the profile password to remove a profile and its history |
+| Windows cannot open NOMAD | Extract the whole ZIP and confirm the WebView2 and .NET runtimes are installed. |
+| Qwen or MedGemma is missing | Start Ollama, run `ollama list` against the same local port as NOMAD and pull the missing model. |
+| The app shows an older library or UI | Close and reopen the updated `NETIN.exe` from the extraction folder. Confirm that `interface\knowledge\index.json` is present. |
+| The medical model cannot respond | Close other model workloads if memory is tight, then retry. Source-backed text can fall back to Qwen when the interpreter is unavailable. |
 
+NOMAD is a research prototype. For real medical care, follow the mission's approved procedures and the crew medical officer.

@@ -7,6 +7,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $project = Split-Path -Parent $PSScriptRoot
+$repository = Split-Path -Parent $project
 $compiler = Join-Path $env:windir 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 $output = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)
 $ui = Join-Path $output 'interface'
@@ -39,12 +40,12 @@ if ($PSCmdlet.ParameterSetName -eq 'Package') {
 }
 
 New-Item -ItemType Directory -Path $ui -Force | Out-Null
-foreach ($file in @('index.html', 'style.css', 'assistant.js', 'check-in.js', 'crew-camera.js', 'crew-profiles.js', 'engine.js', 'motor.js', 'workspace.js', 'app.js', 'ui.js', 'ham-avatar.js', 'ham-language.js', 'ham-presence.js', 'ultrasound.js')) {
+foreach ($file in @('index.html', 'style.css', 'assistant.js', 'check-in.js', 'crew-camera.js', 'crew-profiles.js', 'engine.js', 'motor.js', 'workspace.js', 'app.js', 'ui.js', 'ham-avatar.js', 'ham-language.js', 'ham-presence.js', 'ultrasound.js', 'care.js', 'care-ui.js', 'medical-catalog.json', 'developer-config.js')) {
     Copy-Item -LiteralPath (Join-Path $project $file) -Destination $ui
 }
 $fonts = Join-Path $ui 'assets'
 New-Item -ItemType Directory -Path $fonts -Force | Out-Null
-foreach ($file in @('public-sans.woff2', 'OFL-PublicSans.txt', 'earth-orbit.jpg', 'giant-panda.jpg', 'nomad-logo-light.png', 'nomad-logo-dark.png', 'ham.svg')) {
+foreach ($file in @('public-sans.woff2', 'OFL-PublicSans.txt', 'archivo.woff2', 'OFL-Archivo.txt', 'earth-orbit.jpg', 'giant-panda.jpg', 'nomad-logo-light.png', 'nomad-logo-dark.png', 'ham.svg')) {
     Copy-Item -LiteralPath (Join-Path $project "assets\$file") -Destination $fonts
 }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'README.txt') -Destination $output
@@ -53,7 +54,7 @@ New-Item -ItemType Directory -Path $samples -Force | Out-Null
 Get-ChildItem -LiteralPath (Join-Path $project 'Ultrasound Samples') -File -Filter '*.png' |
     Copy-Item -Destination $samples -Force
 
-$references = Join-Path (Split-Path -Parent $project) 'references'
+$references = Join-Path $repository 'references'
 if (Test-Path -LiteralPath $references -PathType Container) {
     $starter = Join-Path $ui 'starter-library'
     $passages = Join-Path $starter 'files'
@@ -68,6 +69,12 @@ if (Test-Path -LiteralPath $references -PathType Container) {
         [IO.File]::WriteAllText((Join-Path $starter 'index.json'),($index | ConvertTo-Json -Depth 4),[Text.UTF8Encoding]::new($false))
     }
 }
+
+& (Join-Path $PSScriptRoot 'BundleLibrary.ps1') -Repository $repository -UiDirectory $ui
+foreach ($guide in 'INSTALLATION.md','HAM-SIMULATIONS.md') {
+    Copy-Item -LiteralPath (Join-Path $repository "docs\$guide") -Destination $output -Force
+}
+New-Item -ItemType File -Path (Join-Path $output 'NETIN-Portable.flag') -Force | Out-Null
 
 $exe = Join-Path $output 'NETIN.exe'
 $framework = Split-Path -Parent $compiler

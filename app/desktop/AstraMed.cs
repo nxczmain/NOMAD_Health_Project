@@ -286,6 +286,18 @@ internal sealed class MissionWindow : Form
             await localAi.ReplyAsync(view.CoreWebView2, message.Substring(prefix.Length));
             return;
         }
+        const string mailPrefix = "nomad-compose-mail\n";
+        if (message.StartsWith(mailPrefix, StringComparison.Ordinal))
+        {
+            string draft = message.Substring(mailPrefix.Length);
+            if (draft.Length <= 9000 && System.Text.RegularExpressions.Regex.IsMatch(draft,
+                @"\Amailto:[A-Za-z0-9.!$'*+/=^_`{|}~-]+@[A-Za-z0-9.-]+\?subject=[^&#\r\n]*&body=[^&#\r\n]*\z"))
+            {
+                try { Process.Start(new ProcessStartInfo(draft) { UseShellExecute = true }); }
+                catch (Exception) { MessageBox.Show(this, "Set a default mail app in Windows to prepare the email.", "NOMAD"); }
+            }
+            return;
+        }
         if (message == "netin-stop-speech")
         {
             activeSpeech = null;
@@ -313,11 +325,11 @@ internal sealed class MissionWindow : Form
         }
 
         int separator = message.IndexOf('\n');
-        if (separator < 1 || separator > 45 || message.Length > 8 * 1024 * 1024) return;
+        if (separator < 1 || separator > 60 || message.Length > 8 * 1024 * 1024) return;
         string filename = message.Substring(0, separator);
         string content = message.Substring(separator + 1);
         bool isReport = System.Text.RegularExpressions.Regex.IsMatch(filename,
-            @"^(?:nomad|netin)-(medical|weekly|30-day)-\d{4}-\d{2}-\d{2}\.html$");
+            @"\A(?:(?:nomad|netin)-(?:medical(?:-review)?|weekly|30-day)-\d{4}-\d{2}-\d{2}|nomad-problem-[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})\.html\z");
         bool isImage = filename == "netin-attachment.jpg";
         if (!isReport && !isImage) return;
 

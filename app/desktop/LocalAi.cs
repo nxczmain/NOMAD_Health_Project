@@ -11,6 +11,7 @@ internal sealed class LocalAi : IDisposable
 {
     private const string Model = "qwen3:4b";
     private const string VisionModel = "qwen3-vl:4b";
+    private const string MedicalModel = "medgemma1.5:4b";
     private readonly string baseUrl;
     private readonly HttpClient client;
     private readonly JavaScriptSerializer json = new JavaScriptSerializer { MaxJsonLength = 250000 };
@@ -39,8 +40,8 @@ internal sealed class LocalAi : IDisposable
             id = Convert.ToInt32(request["id"]);
             string operation = request["operation"] as string;
             if (operation == "status") result = await CheckStatusAsync();
-            else if (operation == "chat") result = await ChatAsync((Dictionary<string, object>)request["body"], Model);
-            else if (operation == "vision") result = await ChatAsync((Dictionary<string, object>)request["body"], VisionModel);
+            else if (operation == "chat" || operation == "vision")
+                result = await ChatAsync((Dictionary<string, object>)request["body"], operation == "vision");
             else error = "Unknown local model operation.";
         }
         catch (HttpRequestException)
@@ -72,27 +73,33 @@ internal sealed class LocalAi : IDisposable
             response.EnsureSuccessStatusCode();
             var payload = json.Deserialize<Dictionary<string, object>>(await response.Content.ReadAsStringAsync());
             var models = payload["models"] as IEnumerable;
+            bool ready = false;
+            bool medicalReady = false;
             if (models != null)
             {
                 foreach (object item in models)
                 {
                     var model = item as Dictionary<string, object>;
-                    if (model != null && model.ContainsKey("name") && (model["name"] as string) == Model)
-                        return new { ready = true, model = Model };
+                    object name;
+                    if (model == null || !model.TryGetValue("name", out name)) continue;
+                    ready |= (name as string) == Model;
+                    medicalReady |= (name as string) == MedicalModel;
                 }
             }
-            return new { ready = false, model = Model };
+            return new { ready = ready, model = Model, medicalReady = medicalReady, medicalModel = MedicalModel };
         }
     }
 
-    private async Task<string> ChatAsync(Dictionary<string, object> body, string expectedModel)
+    private async Task<string> ChatAsync(Dictionary<string, object> body, bool vision)
     {
-        if ((body["model"] as string) != expectedModel) throw new InvalidOperationException("This model is not available in NOMAD.");
+        string requested = body["model"] as string;
+        if (requested != MedicalModel && requested != (vision ? VisionModel : Model))
+            throw new InvalidOperationException("This model is not available in NOMAD.");
         using (var content = new StringContent(json.Serialize(body), Encoding.UTF8, "application/json"))
         using (HttpResponseMessage response = await client.PostAsync(baseUrl + "/api/chat", content))
         {
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
-                throw new InvalidOperationException("Install the local model with: ollama pull " + expectedModel);
+                throw new InvalidOperationException("Install the local model with: ollama pull " + requested);
             response.EnsureSuccessStatusCode();
             var payload = json.Deserialize<Dictionary<string, object>>(await response.Content.ReadAsStringAsync());
             var reply = (Dictionary<string, object>)payload["message"];

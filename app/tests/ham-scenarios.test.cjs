@@ -177,8 +177,9 @@ test('11 Physical · a localized injury gets a short, sourced answer about that 
   const result = await setup.AI.answer(report,[],exampleLibrary,{activeEnvironment:'Earth'},'wrist pain',false,'physical');
   assert.equal(result.sources.length,1);
   assert.match(result.text,/wrist/);
-  assert.equal(JSON.parse(setup.calls[0].messages[1].content).latestMessage,report);
-  assert.match(setup.calls[0].messages[0].content,/plain English.*three short sentences/);
+  const explanation = setup.calls.find(call => call.model === 'qwen3:4b');
+  assert.equal(JSON.parse(explanation.messages[1].content).latestMessage,report);
+  assert.match(explanation.messages[0].content,/plain English.*three short sentences/);
 });
 
 test('12 Physical · an emotional question belongs in Mental', () => {

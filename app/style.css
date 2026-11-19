@@ -102,6 +102,9 @@ main>.workflow{margin-bottom:18px}
 .message{width:fit-content;max-width:92%;border-radius:13px;padding:12px 14px;background:#f0f4fa;overflow-wrap:anywhere}
 .message.user{align-self:flex-end;background:#e7efff}
 .message p{white-space:pre-wrap}
+.protocol-steps{margin:12px 0;padding-left:1.6em;display:grid;gap:12px}
+.protocol-steps li{padding-left:4px}
+.protocol-steps li::marker{font-weight:700}
 .message .voice-button{margin-top:8px}
 .composer{display:grid;grid-template-columns:1fr auto;align-items:end;gap:8px}
 .composer .field{margin-bottom:0}
@@ -156,7 +159,13 @@ summary{font-weight:670;cursor:pointer}
 .table-scroll{overflow:auto}
 table{width:100%;border-collapse:collapse;font-size:.86rem;text-align:left}
 th,td{padding:8px 9px;border-bottom:1px solid var(--line);vertical-align:top}
-th{background:#f3f6fb}
+th{background:var(--light);color:var(--ink)}
+td{color:var(--ink)}
+.transcript-entry{white-space:pre-wrap;margin:10px 0}
+.transcript-speaker{display:inline-block;min-width:3.5em;color:var(--blue);margin-right:8px;font-weight:750}
+.brand-logo{display:block;width:136px;height:66px;object-fit:contain}
+@media(max-width:720px){.brand-logo{width:106px;height:53px}}
+@media(max-width:540px){.sidebar-brand .brand-logo{width:39px;height:34px}}
 .report-notes,.motor-select,.aside-break{margin-top:16px}
 .motor-board{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;touch-action:none;margin:12px 0;min-height:170px}
 .motor-board>*{aspect-ratio:1;display:grid;place-items:center;min-width:0;background:#e4edfb;border:1px solid #a8bad4;border-radius:8px}
@@ -319,6 +328,7 @@ dialog{color:var(--ink);background:var(--white);max-height:calc(100vh - 34px);bo
 .region.low,.dot.low{background:#ffdfa5}
 .region.medium,.dot.medium{background:#f4a575}
 .region.strong,.dot.strong{background:#df758a}
+.region.reported,.dot.reported{background:repeating-linear-gradient(135deg,#8bbacd 0 4px,#d8edf4 4px 8px);border-color:#3b819a}
 .region.resolved,.dot.resolved{background:#c8e4d6}
 .region-list{display:flex;gap:5px;flex-wrap:wrap;margin:0 0 12px}
 .region-list .button{font-size:.75rem}

@@ -10,7 +10,7 @@ const regions = {
   lhand:'Left hand',rhand:'Right hand',lleg:'Left leg',rleg:'Right leg',
   lfoot:'Left foot',rfoot:'Right foot'
 };
-const symptoms = {pain:'Pain',stiffness:'Stiffness',weakness:'Weakness',tingling:'Tingling',irritation:'Irritation',other:'Other',resolved:'Resolved'};
+const symptoms = {pain:'Pain',injury:'Injury reported',stiffness:'Stiffness',weakness:'Weakness',tingling:'Tingling',irritation:'Irritation',other:'Other',resolved:'Resolved'};
 let stageChoice = 'orbit';
 let healthTab = 'general';
 let physicalTab = 'body';
@@ -129,12 +129,16 @@ function medicalFlags(entry) {
   if (activeEmergency()) {
     return '<p class="notice critical">An urgent concern was reported today. Follow the emergency instructions in the Assistant.</p>';
   }
-  if (!entry) return empty('No check-in in this stage yet.');
+  const physical = globalThis.MissionCare?.activeBody(state) || [];
+  const body = physical.length ? '<ul class="plain-list">'+physical.map(item => '<li><strong>'+escape(regionLabel(item.side,item.region))+'</strong> · '+
+    escape(symptoms[item.symptom] || item.symptom)+(item.intensity == null ? '' : ' · '+item.intensity+'/10')+
+    (item.notes ? ' · '+escape(item.notes) : '')+' <small>'+formatDay(item.date)+'</small></li>').join('')+'</ul>'+button('Open body map','open-body-map','compact') : '';
+  if (!entry) return body || empty('No check-in in this stage yet.');
   const review = CI.differingReadings(entry).map(metric => metricNames[metric.key]);
   const flags = [...review.map(item => 'Review the recorded '+item.toLowerCase()+'.'),
     ...(entry.summary?.followUps || Object.values(checkFollowUps(entry)))];
-  return flags.length ? '<ul class="plain-list">'+flags.map(item => '<li>'+escape(item)+'</li>').join('')+'</ul>' :
-    empty('No follow-up is flagged in this check-in.');
+  return body+(flags.length ? '<ul class="plain-list">'+flags.map(item => '<li>'+escape(item)+'</li>').join('')+'</ul>' :
+    body ? '' : empty('No follow-up is flagged in this check-in.'));
 }
 
 function recordedSummary(summary, fallback) {
@@ -165,6 +169,18 @@ function emergencyAlerts() {
 
 function activeEmergency() {
   return emergencyAlerts().find(alert => !(state.dismissedAlerts || []).some(record => record.id === alert.id));
+}
+
+function reclassifyDrillAlert(query, kind, mode, timeline) {
+  if (kind || !CI.trainingScenario(query)) return;
+  const alert = activeEmergency();
+  const lastReply = timeline.findLast(turn => turn.role === 'assistant');
+  if (!alert?.urgent || alert.mode !== mode || !lastReply ||
+      (lastReply.incidentId ? lastReply.incidentId !== alert.id : lastReply.content !== alert.content)) return;
+  const dismissedAlerts = [...(state.dismissedAlerts || []),{id:alert.id,date:alert.date,env:alert.env,time:new Date().toISOString(),reason:'Clarified as a drill'}];
+  const another = emergencyAlerts().some(item => !dismissedAlerts.some(record => record.id === item.id));
+  const dailyFlow = !another && flow().check === 'urgent' ? {...flow(),check:state.checkBeforeAlert || 'pending'} : state.dailyFlow;
+  save({...state,dismissedAlerts,dailyFlow});
 }
 
 function emergencyBanner(withLink = false) {
@@ -313,8 +329,11 @@ function healthChat(area) {
   const mental = area === 'mental';
   const history = healthChatTurns(area);
   const placeholder = mental ? 'Share how you feel or ask for support' : 'Ask about a symptom, reading or physical change';
+  const physical = !mental && globalThis.MissionCare ? MissionCare.activeBody(state) : [];
+  const recorded = physical.length ? '<details class="record-item"><summary>Recorded physical concerns ('+physical.length+')</summary><ul>'+physical.map(item =>
+    '<li>'+escape(regionLabel(item.side,item.region))+' · '+escape(symptoms[item.symptom] || item.symptom)+' · '+escape(item.notes || '')+'</li>').join('')+'</ul></details>' : '';
   return card(mental ? 'Mental health with Ham' : 'Physical health with Ham',
-    '<div id="health-chat-log" class="health-transcript" aria-live="polite">'+history.slice(-6).map(turn => messageBubble(turn)).join('')+
+    recorded+'<div id="health-chat-log" class="health-transcript" aria-live="polite">'+history.slice(-6).map(turn => messageBubble(turn)).join('')+
     pendingHam(area)+'</div>'+
     (mental ? '<div class="ham-inline ham-composer">'+UI.ham('ham-small',2,'mental')+'<strong>Ham</strong></div>' : '')+
     '<form id="health-chat-form" class="composer" data-area="'+area+'">'+
@@ -327,7 +346,7 @@ function generalHealth() {
   const entry = today() || records()[0];
   return emergencyBanner(true)+'<div class="workspace-grid">'+
     card('Health summary',healthReview('general',dashboardCheck(entry),
-      'Complete a check-in to see a summary.'),summaryAction('general'))+
+      'Complete a check-in to see a summary.'),'<div class="actions">'+summaryAction('general')+button('Prepare medical review','prepare-care-report','compact',busy || summaryPending ? 'disabled' : '')+'</div>')+
     card('Risks and follow-ups',medicalFlags(entry),'','followup-card')+
     card('Latest measurements',vitals(null,undefined,true),archerLabel(),'wide')+
     card('Measurement trend',trendView(),'','wide')+'</div>';
@@ -438,11 +457,11 @@ function regionLabel(side, region) {
 function bodyStatus(record) {
   if (!record) return '';
   if (record.symptom === 'resolved') return '';
-  if (!record.intensity) return '';
+  if (record.intensity == null) return 'reported';
   return record.intensity >= 7 ? 'strong' : record.intensity >= 4 ? 'medium' : 'low';
 }
 function selectedHistory(selection) {
-  return activeBodyRecords().filter(item => regionKey(item) === regionKey(selection)).sort((a,b) => b.date.localeCompare(a.date));
+  return activeBodyRecords().filter(item => regionKey(item) === regionKey(selection)).sort((a,b) => (b.reportedAt || b.date).localeCompare(a.reportedAt || a.date));
 }
 function bodyFigure(side) {
   return '<div class="figure-view"><div class="body-figure '+side+'" role="group" aria-label="'+(side === 'front' ? 'Front view' : 'Back view')+'">'+
@@ -451,7 +470,7 @@ function bodyFigure(side) {
       const latest = selectedHistory({side,region})[0];
       const label = regionLabel(side,region);
       return '<button type="button" class="region '+region+' '+bodyStatus(latest)+'" data-action="body-part" data-side="'+side+'" data-region="'+region+
-        '" aria-label="'+label+(latest ? ', '+symptoms[latest.symptom]+' '+latest.intensity+'/10' : '')+'" aria-pressed="'+bodySelection.has(key)+'" title="'+label+'"></button>';
+        '" aria-label="'+label+(latest ? ', '+(symptoms[latest.symptom] || latest.symptom)+(latest.intensity == null ? '' : ' '+latest.intensity+'/10') : '')+'" aria-pressed="'+bodySelection.has(key)+'" title="'+label+'"></button>';
     }).join('')+'</div></div>';
 }
 function physicalHealth() {
@@ -468,8 +487,8 @@ function bodyHealth() {
   const history = selection.map(({side,region}) => {
     const [current,...prior] = selectedHistory({side,region});
     return '<div class="record-item"><h3>'+regionLabel(side,region)+'</h3>'+
-      (current ? '<p><strong>'+(current.symptom === 'resolved' ? 'Resolved' : 'Active')+'</strong> · '+symptoms[current.symptom]+' · '+current.intensity+'/10 · '+formatDay(current.date)+'</p>'+
-        (current.notes ? '<p>'+escape(current.notes)+'</p>' : '') : empty('No prior records.'))+
+      (current ? '<p><strong>'+(current.symptom === 'resolved' ? 'Resolved' : 'Active')+'</strong> · '+symptoms[current.symptom]+' · '+(current.intensity == null ? 'Intensity not recorded' : current.intensity+'/10')+' · '+formatDay(current.date)+'</p>'+
+        (current.notes ? '<p>'+escape(current.notes)+'</p>' : '')+(current.onset ? '<p>Started · '+escape(current.onset)+'</p>' : '') : empty('No prior records.'))+
       (prior.length ? '<details><summary>Previous records ('+prior.length+')</summary><ul>'+prior.map(item =>
         '<li>'+formatDay(item.date)+' · '+symptoms[item.symptom]+' · '+item.intensity+'/10 '+escape(item.notes)+'</li>').join('')+'</ul></details>' : '')+'</div>';
   }).join('');
@@ -477,7 +496,7 @@ function bodyHealth() {
     '<div class="actions" aria-label="Body view">'+['front','back'].map(side => button(side === 'front' ? 'Front' : 'Back','body-side','compact',
       'data-side="'+side+'" aria-pressed="'+(bodySide === side)+'"')).join('')+'</div>'+
     '<div class="body-map">'+bodyFigure(bodySide)+'</div>'+
-    '<p class="legend"><span class="dot low"></span> 1–3 <span class="dot medium"></span> 4–6 <span class="dot strong"></span> 7–10 </p>'+
+    '<p class="legend"><span class="dot low"></span> 1–3 <span class="dot medium"></span> 4–6 <span class="dot strong"></span> 7–10 <span class="dot reported"></span> Intensity not recorded</p>'+
     field('Find a region','<input id="region-search" type="search" list="body-regions" placeholder="Search and select a region">')+
     '<datalist id="body-regions">'+Object.keys(regions).map(region => '<option value="'+regionLabel(bodySide,region)+'"></option>').join('')+'</datalist>')+
     card('Log a symptom',(regionTags ? '<div class="region-list">'+regionTags+'</div>' : empty('Choose one or more regions to log a symptom.'))+
@@ -649,8 +668,8 @@ function conversationLog(turns, fold = true) {
   if (!turns.length) return '';
   const multipleStages = new Set(turns.map(turn => turn.env)).size > 1;
   const listings = groups.filter(([,items]) => items.length).map(([label,items]) => {
-    const messages = items.map(turn => '<p><strong>'+(turn.role === 'assistant' ? 'Ham' : 'You')+'</strong>'+
-      (multipleStages ? ' <small>· '+escape(stages[turn.env] || 'Mission stage')+'</small>' : '')+' '+escape(turn.role === 'assistant' ? AI.clearTags(turn.content) : turn.content)+
+    const messages = items.map(turn => '<p class="transcript-entry"><strong class="transcript-speaker">'+(turn.role === 'assistant' ? 'Ham:' : 'You:')+'</strong>'+
+      (multipleStages ? ' <small>· '+escape(stages[turn.env] || 'Mission stage')+'</small>' : '')+' <span>'+escape(turn.role === 'assistant' ? AI.clearTags(turn.content) : turn.content)+'</span>'+
       (turn.partialCheck ? ' <small>(unfinished check-in)</small>' : '')+'</p>').join('');
     return fold ? '<details><summary>'+label+'</summary>'+messages+'</details>' : '<h3>'+label+'</h3>'+messages;
   }).join('');
@@ -712,6 +731,9 @@ function markdownPreview(item, range) {
     let content;
     if (/^#{1,6} /.test(lines[0])) {
       content = '<h3>'+escape(lines.shift().replace(/^#+ /,''))+'</h3>'+lines.map(line => '<p>'+escape(line)+'</p>').join('');
+    } else if (/^!\[([^\]]*)\]\((knowledge\/pages\/[a-zA-Z0-9_-]+\.png)\)$/.test(lines[0])) {
+      const image = /^!\[([^\]]*)\]\(([^)]+)\)$/.exec(lines[0]);
+      content = '<figure><img src="'+image[2]+'" alt="'+escape(image[1])+'" loading="lazy"><figcaption>'+escape(image[1])+'</figcaption></figure>';
     } else if (lines.length >= 2 && /^\|?[\s:|-]+$/.test(lines[1]) && lines[0].includes('|')) {
       const cells = (line,tag) => line.trim().replace(/^\||\|$/g,'').split('|').map(cell => '<'+tag+'>'+escape(cell.trim())+'</'+tag+'>').join('');
       content = '<div class="table-scroll"><table><thead><tr>'+cells(lines[0],'th')+'</tr></thead><tbody>'+
@@ -748,6 +770,10 @@ function documentsView() {
   const query = documentQuery.toLowerCase().trim();
   const matches = library.filter(item => (item.relative+' '+item.markdown).toLowerCase().includes(query));
   const active = library.find(item => item.id === openedDocument?.id);
+  const sourcePage = active?.excerpts.find(item => openedDocument.range && item.start < openedDocument.range.end && item.end > openedDocument.range.start)?.page;
+  const originalLinks = active ? (active.status ? '<p class="notice">'+escape(active.status)+'</p>' : '')+
+    (active.original ? '<p><a href="'+escape(active.original)+(sourcePage ? '#page='+sourcePage : '')+'">Open original PDF'+(sourcePage ? ' · page '+sourcePage : '')+'</a></p>' : '')+
+    (active.url && /^https:\/\//i.test(active.url) ? '<p><a href="'+escape(active.url)+'">Open original source</a></p>' : '') : '';
   const results = matches.map(item => {
     const index = query ? item.markdown.toLowerCase().indexOf(query) : 0;
     const snippet = item.markdown.slice(Math.max(0,index-34),Math.max(0,index)+112).replace(/\s+/g,' ');
@@ -759,8 +785,7 @@ function documentsView() {
       '<button class="button compact">Search</button></form><p class="muted" role="status">'+escape(missionImport || matches.length+' of '+library.length+' documents')+'</p>'+
       (libraryError ? '<p class="error">'+escape(libraryError)+'</p>' : '')+
       (results || empty('No matches.')))+
-    card(active ? escape(active.title) : 'Reader',active ? '<div id="document-reading" tabindex="-1">'+markdownPreview(active,openedDocument.range)+
-      (active.url && /^https:\/\//i.test(active.url) ? '<p><a href="'+escape(active.url)+'">Open original source</a></p>' : '')+'</div>' :
+    card(active ? escape(active.title) : 'Reader',active ? '<div id="document-reading" tabindex="-1">'+originalLinks+markdownPreview(active,openedDocument.range)+'</div>' :
       empty('Choose a document to read.'))+'</div>';
 }
 function settingsView() {
@@ -779,7 +804,12 @@ function settingsView() {
       '<output id="volume-value">'+appearance.volume+'%</output><div class="actions">'+button('Automatic read-aloud','toggle-speech','','aria-pressed="'+readAloud+'"')+'</div>')+
     card('Profile','<p>'+escape(state.profile.name)+'</p><div class="actions">'+button('Edit profile','profile')+button('Sign out','exit-crew')+'</div>')+
     card('Local assistant','<p role="status">'+status[model]+'</p>'+connectionHelp+button('Check connection','model','','id="check-connection"'+
-      (model === 'checking' || busy ? ' disabled' : '')))+'</div>';
+      (model === 'checking' || busy ? ' disabled' : '')))+
+    card('Medical model','<p>Medical interpretation · '+escape(AI.clinicalModel())+'</p><p>Chat and explanations · '+escape(AI.model)+'</p><form id="clinical-model-form">'+
+      field('Installed Ollama model','<input name="modelName" maxlength="160" value="'+escape(AI.clinicalModel())+'" placeholder="Local MedGemma 1.5 model name" required>')+
+      '<p class="error" role="alert"></p><button class="button primary"'+(busy ? ' disabled' : '')+'>Test and use model</button></form>'+
+      '<p><a href="https://ollama.com/library/medgemma1.5:4b">MedGemma 1.5 for Ollama</a></p>')+
+    (developerMode() ? card('Developer tools',button('Report an application problem','report-problem')) : '')+'</div>';
 }
 function applyAppearance() {
   document.documentElement.dataset.theme = appearance.theme;
@@ -862,7 +892,10 @@ function physicalContext(query = '', earlierReport = '') {
     related(metric.label+' '+metric.key)).map(metric => ({name:metric.label,value:E.format(knownReadings[metric.key])+' '+metric.unit}));
   const profileHistory = (state.profile.history || '').split(/(?<=[.!;])\s+|\n/)
     .filter(item => item && (query || earlierReport) && related(item) && AI.healthTopic(item) !== 'mood').slice(0,3);
-  return {activeEnvironment:environment().name,earlierReport:earlierReport || undefined,activeSymptoms,resolvedSymptoms,readings,previousRecords,profileHistory};
+  return {activeEnvironment:environment().name,earlierReport:earlierReport || undefined,activeSymptoms,resolvedSymptoms,readings,previousRecords,profileHistory,
+    medicalOfficer:state.profile.medical,allergies:state.profile.allergies,
+    recordedMedications:(state.medications || []).filter(item=>item.env===state.env).slice(0,10),
+    reportedMedicalSupplies:globalThis.MissionCare ? MissionCare.supplies(state).filter(item=>item.group==='Pain Reliever' || item.quantity != null).slice(0,15) : []};
 }
 
 async function generateSummary(area) {
@@ -872,11 +905,11 @@ async function generateSummary(area) {
   render();
   let presented;
   try {
-    if (missionIndexing && ['physical','general'].includes(area)) await missionIndexing;
+    if (missionIndexing && ['physical','general','mental'].includes(area)) await missionIndexing;
     if (owner !== session) return;
     let summary;
     if (area === 'mental') {
-      summary = {...await AI.mentalSupport('',[],mentalContext()),scope:'mental-only'};
+      summary = {...await AI.mentalSupport('',[],mentalContext(),library),scope:'mental-only'};
     } else if (area === 'physical') {
       const context = physicalContext();
       const question = 'Review the reported physical changes and give one practical next step.';
@@ -922,7 +955,8 @@ function toggleRegion(side,region,remove = false) {
 }
 function workspaceClick(control) {
   const {action,side,region,tab,area} = control.dataset;
-  if (action === 'resume-flow') resumeFlow();
+  if (action === 'open-body-map') { healthTab = 'physical'; physicalTab = 'body'; showRoute('health'); }
+  else if (action === 'resume-flow') resumeFlow();
   else if (action === 'flow-step' && Object.hasOwn(flowLabels,control.dataset.step)) openFlowStep(control.dataset.step);
   else if (action === 'backdrop-picker') backdropPicker();
   else if (action === 'choose-backdrop' && ['earth','panda'].includes(control.dataset.choice)) changeBackdrop(control.dataset.choice);
@@ -1028,9 +1062,14 @@ function workspaceSubmit(form) {
     const intensity = symptom === 'resolved' ? 0 : Number(data.get('intensity'));
     if (!bodySelection.size || !Object.hasOwn(symptoms,symptom) || !Number.isInteger(intensity) || intensity < 0 || intensity > 10) return;
     const date = E.dateKey();
-    const entries = [...bodySelection.values()].map(selection => ({...selection,date,env:state.env,symptom,intensity,notes:data.get('notes').trim()}));
+    const entries = [...bodySelection.values()].map(selection => ({...selection,id:crypto.randomUUID(),reportedAt:new Date().toISOString(),origin:'body-map',date,env:state.env,symptom,intensity,notes:data.get('notes').trim()}));
     const prior = bodyRecords().filter(record => record.date !== date || record.env !== state.env || record.symptom === 'resolved' || !bodySelection.has(regionKey(record)));
-    if (save({...state,body:[...entries,...prior]})) { bodyEdit = undefined; render(); notify('Symptom saved.'); }
+    if (save({...state,body:[...entries,...prior]})) {
+      bodySelection.clear();
+      bodyEdit = undefined;
+      render();
+      notify('Symptom saved.');
+    }
   } else if (form.id === 'document-search') {
     documentQuery = data.get('query');
     render();
@@ -1053,7 +1092,7 @@ function completedCheckTurns() {
 }
 
 function messageBubble(turn, controls = '', avatar = UI.ham()) {
-  const name = turn.role === 'user' ? 'You' : avatar+' Ham';
+  const name = turn.role === 'user' ? 'You:' : avatar+' Ham:';
   const body = turn.role === 'assistant' ? paragraphReply(turn) : '<p>'+escape(turn.content)+'</p>';
   return '<article class="message '+turn.role+(turn.urgent ? ' urgent' : '')+'"'+
     (turn.incidentId ? ' tabindex="-1" data-incident="'+escape(turn.incidentId)+'"' : '')+'><div class="speaker">'+name+'</div>'+body+controls+'</article>';

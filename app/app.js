@@ -11,11 +11,11 @@ const deletedCrewKey = 'netin-deleted-crew-v1';
 const missionStageKey = 'netin-mission-stage-v1';
 const isCrewKey = key => typeof key === 'string' && /^netin-crew:[\da-f-]{36}$/.test(key);
 const routes = [['panel','Home'],['bot','Assistant'],['health','Health'],['records','Records']];
-const utilityRoutes = [['guias','Documents'],['settings','Settings']];
+const utilityRoutes = [['medications','Medications'],['guias','Documents'],['settings','Settings']];
 const subRoutes = ['check','motor','journal','semana'];
 const formatDay = (key) => new Date(key + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
 const escape = (value = '') => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[char]);
-const datedTurns = turns => turns.map(turn => ({...turn,date:turn.date || E.dateKey(),env:turn.env || state.env}));
+const datedTurns = turns => turns.map(turn => ({...turn,id:turn.id || crypto.randomUUID(),date:turn.date || E.dateKey(),env:turn.env || state.env}));
 const button = (label, action, kind = '', attrs = '') => '<button type="button" class="button '+kind+'" data-action="'+action+'" '+attrs+'>'+label+'</button>';
 const link = (label, route, kind = '') => '<a class="button '+kind+'" href="#'+route+'">'+label+'</a>';
 const view = () => !session ? 'home' : cameraScreen ? 'camera' :
@@ -670,13 +670,20 @@ function crewContext(mode, query = '') {
   const data = {activeEnvironment:name, mission, environmentContext:context};
   if (mode === 'guide') return data;
   const logs = mode === 'week' ? reviewEntries().slice(0,28) : [today()].filter(entry => entry && (simulation() || !entry.sample));
+  const inventoryQuery = /\b(?:equipment|supplies|inventory|stock|equipo|suministros|inventario)\b/i.test(query);
   return {...data, history:historicalContext(query), journal:(state.journals || []).slice(0,4).map(({date,text}) => ({date,text:text.slice(0,220)})),
     recentBody:bodyRecords().slice(0,5).map(({date,region,symptom,intensity,notes}) => ({date,region:regions[region],symptom:symptoms[symptom],intensity,notes:notes.slice(0,140)})),
     period: mode === 'week' ? 'Last seven local calendar days, grouped by environment' : 'Today in the active environment',
     profileContext: simulation() ? 'Simulation profile. Treat the check-ins as simulated data.' : 'Crew-entered profile',
     medicalOfficer: state.profile.medical || 'Use the mission medical contact',
     medicalHistory: state.profile.history || '', allergies: state.profile.allergies || '',
-    reportedMedicalSupplies: (state.medicalSupplies || []).filter(item => item.env === state.env).slice(-20).map(({name,quantity,expires}) => ({name,quantity,expires})),
+    reportedMedicalSupplies: globalThis.MissionCare ? MissionCare.supplies(state).filter(item =>
+      !query || inventoryQuery || (item.name+' '+(item.generic || '')).toLowerCase().split(/\W+/).some(word => word.length > 3 && query.toLowerCase().includes(word)))
+      .slice(0,30).map(item => ({name:item.name,quantity:item.quantity,expires:item.expires,location:item.location,
+        referenceLocation:item.referenceLocation,stockStatus:supplyStatus(item),referenceDocument:item.document,referencePage:item.page,
+        alternatives:item.quantity === 0 ? MissionCare.alternatives(state,item).map(other => ({name:other.name,quantity:other.quantity,document:other.document,page:other.page})) : []})) :
+      (state.medicalSupplies || []).filter(item => item.env === state.env),
+    recordedMedications:(state.medications || []).filter(item => item.env === state.env).slice(0,15),
     checkIns: logs.map((entry, index) => ({date:entry.date, environment:E.environments[entry.env]?.name,
       readings: Object.fromEntries(E.metrics.filter(metric => entry.values[metric.key] != null).map(metric => [metric.label,E.format(entry.values[metric.key])+' '+metric.unit])),
       physicalCondition: E.steps[0].options[entry.values.impact], moodImpact: E.dutyImpact[entry.values.moodImpact],
@@ -720,6 +727,11 @@ function temperatureAlert(entry) {
 
 function emergencyAnswer(kind, report = '') {
   const reply = CI.emergencyReply(kind,report,stageChoice);
+  if (kind === 'unresponsive' && stageChoice !== 'earth') {
+    const document = library.find(item => item.title === 'ERC-2025-Special-Circumstances');
+    const excerpt = document?.excerpts.find(entry => entry.page === 43 && entry.text.includes('once the patient is secured'));
+    if (excerpt) reply.sources.push({...excerpt,ref:2,id:document.id,title:document.title,url:document.url});
+  }
   if (kind === 'medical' && CI.bloodCough(report)) {
     const document = library.find(item => item.title === 'First aid for an injured crewmate');
     if (document) reply.sources.push({ref:3,id:document.id,title:document.title,start:0,end:document.markdown.length});
@@ -852,6 +864,14 @@ async function submitIntake(value, skip = false, file) {
       if (session !== activeSession || draft() !== current) return;
     }
     next = kind ? CI.interrupt(current,prompt,value.trim(),kind) : CI.apply(current,prompt,value,skip);
+    if (next.clarificationFor && !CI.explainQuestion(prompt,value)) {
+      busy = true;
+      hamChatWork = 'check';
+      if (missionIndexing) await missionIndexing;
+      const reply = await AI.answer(value,current.turns,library,crewContext('chat',value)).catch(() => null);
+      if (session !== activeSession || draft() !== current) return;
+      if (reply?.text) next.turns[next.turns.length-1] = {role:'assistant',content:reply.text,paragraph:reply.paragraph,sources:reply.sources};
+    }
     if (file && !CI.urgent(next)) {
       busy = true;
       next.image = await compressImage(file);
@@ -873,6 +893,10 @@ async function submitIntake(value, skip = false, file) {
   stopSpeech();
   if (CI.urgent(next)) return finishIntake(next);
   if (!setDraft(next)) return;
+  if (next.clarificationFor) {
+    if (view() === 'bot') { render(); presentHam(next.turns.at(-1)); }
+    return;
+  }
   return prepareIntakeQuestion(next);
 }
 
@@ -897,7 +921,9 @@ function finishIntake(current = draft()) {
   const dailyFlow = current.date === E.dateKey() ?
     {...flow(),date:current.date,check:urgent ? 'urgent' : hasData ? 'done' : 'pending'} : state.dailyFlow;
   const owner = session;
-  const update = {...state,drafts,dailyFlow,
+  const body = !urgent && current.answers.symptoms && globalThis.MissionCare ?
+    MissionCare.captureBody({...state,env:current.env},current.answers.symptoms,{mode:'check',date:current.date,id:crypto.randomUUID()}) : state.body;
+  const update = {...state,drafts,dailyFlow,body,
     checkBeforeAlert:urgent ? flow().check : state.checkBeforeAlert,
     urgentAlert:urgent ? turn : state.urgentAlert,
     records:hasData ? [...state.records.filter(item => item.env !== entry.env || item.date !== entry.date),entry] : state.records,
@@ -997,10 +1023,15 @@ function summaryParagraph(value) {
 }
 
 function paragraphReply(value) {
-  const actions = value.related?.length ? '<div class="actions">'+value.related.map((source,index) =>
+  const actions = (value.medicationIntake ? '<div class="actions">'+button('Record this dose','record-medication','compact','data-medication="'+escape(value.medicationIntake)+'"')+'</div>' : '')+(value.inventory ? '<div class="actions">'+button('Open medical supplies','medical-supplies','compact')+'</div>' : '')+(value.related?.length ? '<div class="actions">'+value.related.map((source,index) =>
     documentTarget({...source, action:index === 0 ? 'Open relevant passage' : source.title})).join('')+'</div>' :
-    value.related ? '<div>'+link('Open Documents','guias','compact')+'</div>' : '';
+    value.related ? '<div>'+link('Open Documents','guias','compact')+'</div>' : '');
   if (value.sections && !value.urgent) return replySections(value)+actions;
+  if (Array.isArray(value.steps) && value.steps.length) {
+    return (value.introduction ? '<p>'+escape(AI.clearTags(value.introduction))+'</p>' : '')+
+      '<ol class="protocol-steps">'+value.steps.map(step => '<li>'+escape(AI.clearTags(step.text))+'</li>').join('')+'</ol>'+
+      sourcesView(value.sources)+actions;
+  }
   return '<p'+(value.urgent ? ' class="notice critical"' : '')+'>'+escape(AI.clearTags(summaryParagraph(value)))+'</p>'+
     sourcesView(value.sources)+actions+
     (value.handoff ? '<p class="micro emergency-handoff">Report to responders: “'+escape(AI.clearTags(value.handoff))+'”</p>' : '');
@@ -1174,13 +1205,14 @@ function render() {
   prepareHamTour(route);
   document.documentElement.dataset.stage = workspace ? state.env : stageChoice;
   $('sidebar').hidden = !workspace;
-  $('brand').innerHTML = workspace ? '' : UI.icon('orbit')+' NOMAD';
+  const brandLogo = '<img class="brand-logo" src="assets/'+(appearance.theme === 'dark' ? 'nomad-logo-dark.png' : 'nomad-logo-light.png')+'" alt="NOMAD">';
+  $('brand').innerHTML = workspace ? '' : brandLogo;
   $('mast-stage').innerHTML = workspace ? stageBadge(state.env) : '';
   if (workspace) {
     const active = {motor:'health',journal:'panel',check:'bot',semana:'records',camera:'panel'}[route] || route;
-    const icons = {panel:'home',bot:'bot',health:'health',records:'records',guias:'guias',settings:'settings'};
+    const icons = {panel:'home',bot:'bot',health:'health',records:'records',medications:'bag',guias:'guias',settings:'settings'};
     const navigation = items => items.map(([key,label]) => '<a href="#'+key+'" title="'+label+'"'+(key === active ? ' aria-current="page"' : '')+'>'+UI.icon(icons[key])+'<span>'+label+'</span></a>').join('');
-    $('sidebar-brand').innerHTML = UI.icon('orbit')+' NOMAD';
+    $('sidebar-brand').innerHTML = brandLogo;
     $('sidebar-crew').innerHTML = portrait(state.profile.name,validPhoto(crewPortrait))+'<div><strong>'+escape(state.profile.name)+
       '</strong><small>'+escape(state.profile.role)+'</small></div>';
     if (!$('ham-status')) $('ham-sidebar').innerHTML = button(UI.ham('ham-small')+
@@ -1191,7 +1223,7 @@ function render() {
   }
   $('main').innerHTML = (storageError ? '<p class="notice">The local log could not be read. Restart NOMAD if the problem persists.</p>' : '')+
     ({home,camera:cameraView,panel:workspaceHome,check:checkView,motor:motorView,bot:assistantView,semana:reportView,guias:documentsView,
-      health:healthView,records:recordsView,settings:settingsView,journal:journalView})[route]();
+      health:healthView,records:recordsView,medications:medicationHistory,settings:settingsView,journal:journalView})[route]();
   attachHam(undefined,true);
   greetWithHam(route);
   if (route === 'motor' && routeChanged) speakMotorGuide();
@@ -1213,39 +1245,27 @@ function passwordFields(setup) {
     (setup ? field('Confirm password','<input name="confirmation" type="password" autocomplete="new-password" minlength="8" maxlength="128" required>') : '');
 }
 function medicalSuppliesModal(item) {
-  const items = (state.medicalSupplies || []).filter(entry => entry.env === state.env);
-  const list = items.map(entry => {
-    const captions = [...(entry.quantity === 0 ? ['Out of stock'] : []),
-      ...(!entry.expires ? ['Expiration not recorded'] : entry.expires < E.dateKey() ? ['Expired'] : [])];
-    const statuses = captions.length ? captions.map(label => '<span class="state-pill review">'+UI.icon('alert')+label+'</span>').join(' ') :
-      '<span class="state-pill done">'+UI.icon('done')+'In stock</span>';
-    return '<tr><th scope="row">'+escape(entry.name)+'</th><td>'+escape(entry.quantity)+'</td><td>'+
-      escape(entry.expires || '—')+'</td><td>'+statuses+'</td><td>'+button('Edit','edit-medical-supply','','data-id="'+escape(entry.id)+'" aria-label="Edit '+escape(entry.name)+'"')+'</td></tr>';
-  }).join('');
-  const form = '<form id="medical-supplies-form" data-id="'+escape(item?.id)+'">'+
-    field('Supply name','<input name="supply" maxlength="80" value="'+escape(item?.name)+'" required>')+
-    field('Units available','<input name="quantity" type="number" min="0" max="999999" step="1" value="'+escape(item?.quantity)+'" required>')+
-    field('Expiration (optional)','<input name="expires" type="date" value="'+escape(item?.expires)+'">')+
-    '<div class="actions"><button class="button primary" type="submit">'+(item ? 'Save changes' : 'Add supply')+'</button>'+
-    (item ? button('Remove supply','remove-medical-supply','','data-id="'+escape(item.id)+'"') : '')+'</div></form>';
-  const body = '<p class="muted">'+environment().name+' · Supplies reported by this astronaut.</p>'+
-    (list ? '<div class="table-scroll"><table><thead><tr><th>Item</th><th>Quantity</th><th>Expiration date</th><th>Status</th><th>Action</th></tr></thead><tbody>'+list+'</tbody></table></div>' :
-      '<p class="muted">No supplies recorded for this environment.</p>')+form;
   if ($('modal').open) $('modal').close();
-  openModal('Medical supplies',body);
+  openModal('Medical supplies',inventoryMarkup(item));
 }
 function profileModal(create = false) {
   const profile = create ? {role:'Mission specialist'} : state.profile;
   const fields = keys => keys.map(([key,label]) =>
     field(label,'<input name="'+key+'" maxlength="'+(key === 'name' || key === 'role' ? '80' : '350')+'" value="'+escape(profile[key])+'" '+(['name','role'].includes(key) ? 'required' : '')+'>')).join('');
-  const identity = fields([['name','Name'],['role','Role or rank']]);
+  const roles = ['Commander','Pilot','Mission specialist','Flight engineer','Crew medical officer','Payload specialist','Research scientist','Crew member'];
+  const customRole = !!profile.role && !roles.includes(profile.role);
+  const identity = fields([['name','Name']])+field('Role or rank','<select name="role" aria-label="Role or rank" required>'+roles.map(role=>
+    '<option value="'+escape(role)+'"'+(role === profile.role ? ' selected' : '')+'>'+escape(role)+'</option>').join('')+
+    '<option value="custom"'+(customRole ? ' selected' : '')+'>Other role</option></select>')+
+    '<div id="custom-role-field"'+(customRole ? '' : ' hidden')+'>'+field('Other role','<input name="customRole" maxlength="80" value="'+escape(customRole ? profile.role : '')+'"'+(customRole ? ' required' : ' disabled')+'>')+'</div>';
   const medical = fields([['medical','Crew medical officer'],['history','Medical history'],['allergies','Allergies']]);
   openModal(create ? 'Create profile' : 'Crew profile','<form id="profile-form">'+(create ?
     '<section id="profile-identity"><h3>1. Crew identity</h3>'+identity+button('Continue','profile-next','primary')+'</section>'+
     '<section id="profile-access" hidden><h3>2. Profile password</h3>'+passwordFields(true)+
       '<p class="muted">You can add medical details after signing in.</p><p class="error" role="alert"></p><div class="actions">'+
       button('Back','profile-back')+'<button class="button primary" type="submit">Create profile</button></div></section>' :
-    identity+medical+field('Mission start date (optional)','<input name="missionStartDate" type="date" value="'+escape(profile.missionStartDate)+'">'+
+    identity+medical+field('Medical officer email (optional)','<input name="medicalEmail" type="email" maxlength="254" value="'+escape(profile.medicalEmail || '')+'">')+
+    field('Mission start date (optional)','<input name="missionStartDate" type="date" value="'+escape(profile.missionStartDate)+'">'+
     '')+'<button class="button primary" type="submit">Save profile</button>')+'</form>');
   if (create) {
     $('profile-form').elements.password.disabled = true;
@@ -1257,6 +1277,7 @@ function profileStep(access) {
   const form = $('profile-form');
   if (!form?.elements.confirmation) return;
   if (access && (!form.elements.name.reportValidity() || !form.elements.role.reportValidity())) return;
+  if (access && form.elements.role.value === 'custom' && !form.elements.customRole.reportValidity()) return;
   $('profile-identity').hidden = access;
   $('profile-access').hidden = !access;
   form.elements.password.disabled = !access;
@@ -1373,7 +1394,9 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
   const history = timeline.filter(item => !item.mode || item.mode === mode).slice(-12).map(({role,content}) => ({role,content}));
   turn.mode = mode;
   turn.thread = state.chatThread || '';
-  if (!save({...state,conversations:[...(state.conversations || []),turn]})) return;
+  const bodyFollowUp = globalThis.MissionCare?.bodyFollowUp(state,query,turn,timeline.findLast(item => item.role === 'assistant'));
+  const body = bodyFollowUp?.body || globalThis.MissionCare?.captureBody(state,query,turn,history.filter(item => item.role === 'user').at(-1)?.content) || state.body;
+  if (!save({...state,body,conversations:[...(state.conversations || []),turn]})) return;
   const currentAlert = activeEmergency();
   const safetyHistory = timeline.filter(item => item.date === turn.date && (!item.urgent || (currentAlert &&
     (item.incidentId ? item.incidentId === currentAlert.id : item.content === currentAlert.content)))).slice(-6);
@@ -1382,7 +1405,7 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
     (mode !== 'physical' || physicalTab === 'body') : view() === 'bot';
   const resolved = AI.resolvedMessage(query);
   let kind = CI.emergencyKind(query);
-  if (!kind && !resolved && conversational) {
+  if (!kind && !resolved && !bodyFollowUp && conversational) {
     busy = true;
     hamChatWork = mode;
     if (isVisible()) render();
@@ -1390,6 +1413,7 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
     finally { if (session === currentSession) { busy = false; hamChatWork = ''; } }
     if (session !== currentSession) return;
   }
+  if (typeof reclassifyDrillAlert === 'function') reclassifyDrillAlert(query,kind,mode,timeline);
   const nextEnv = mode === 'chat' ? E.detectEnvironmentChange(query) : null;
   const lowTemperature = !resolved && !scoped && mode !== 'guide' && E.hasLowBodyTemperature(today()) &&
     emergencyAlerts().some(alert => alert.reason && !(state.dismissedAlerts || []).some(record => record.id === alert.id));
@@ -1400,6 +1424,11 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
     response = {...alert,content:alert.text,urgent:true,urgentKind:urgent,incidentId:crypto.randomUUID()};
   } else if (resolved && currentAlert) {
     response = {content:'[[neutral]] Thanks for the update. The emergency alert is still available. You can dismiss it once the immediate concern has been addressed.'};
+  } else if (bodyFollowUp) {
+    response = {content:bodyFollowUp.text,bodyFollowUp:bodyFollowUp.bodyFollowUp};
+  } else if (globalThis.MissionCare?.bodyQuestion(state,query,turn)) {
+    const question = MissionCare.bodyQuestion(state,query,turn);
+    response = {content:question.text,bodyFollowUp:question.bodyFollowUp};
   } else if (nextEnv) {
     let text = E.environments[nextEnv].name+' is already the active environment.';
     if (nextEnv !== state.env) {
@@ -1427,7 +1456,9 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
         result = {text:'We can talk about '+(mode === 'mental' ? 'how you’re feeling emotionally' : 'physical changes')+
           ' here. For that question, open Health → '+(mismatch === 'physical' ? 'Physical' : 'Mental')+'.'};
       } else if (emotional) {
-        result = await AI.mentalSupport(query,history,mentalContext());
+        if (missionIndexing) await missionIndexing;
+        if (session !== currentSession) return;
+        result = await AI.mentalSupport(query,history,mentalContext(),library);
       } else {
         if (companionMode) {
           social = await AI.companion(query,history,environment().name,firstName());
@@ -1441,7 +1472,7 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
         const hasReviewData = !review || data.checkIns.length > 0;
         const terms = searchContext || (review ? reviewSearch(data) : intent?.search || '');
         result = social && !social.health && social.text ? {text:social.text} :
-          hasReviewData ? await AI.answer(present,mode === 'chat' ? history : [],library,data,terms,!intent?.search && !focus,focus) : null;
+          hasReviewData ? await AI.answer(present,conversational ? history : [],library,data,terms,!!intent?.procedure || (!intent?.search && !focus),focus) : null;
         if (session !== currentSession) return;
       }
       if (session !== currentSession) return;
@@ -1449,6 +1480,7 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
       turn.companion = !!social && !social.health;
       const reply = review && !turn.modelTurn ? localReview(mode, result?.text) : result;
       response = {content:reply?.text || reply,paragraph:reply?.paragraph,
+        introduction:reply?.introduction,steps:reply?.steps,related:reply?.related,inventory:reply?.inventory,medicationIntake:reply?.medicationIntake,
         sections:reply?.sections,sources:reply?.sources,modelTurn:turn.modelTurn,companion:turn.companion,
         mentalSupport:emotional || undefined};
       if ((turn.modelTurn && !emotional) || turn.companion) model = 'ready';
@@ -1591,8 +1623,18 @@ document.addEventListener('click',(event) => {
   if (action === 'new-profile') return profileModal(true);
   if (session && workspaceClick(control)) return;
   if (action === 'medical-supplies') return medicalSuppliesModal();
+  if (action === 'add-medical-supply') return medicalSuppliesModal({name:'',quantity:null});
+  if (action === 'medication-history') { $('modal').close(); return showRoute('medications'); }
+  if (action === 'record-medication') return medicationModal(control.dataset.medication || '');
+  if (action === 'prepare-care-report') return void prepareCareReport();
+  if (action === 'save-care-report') return saveCareReport();
+  if (action === 'compose-medical-email' && globalThis.chrome?.webview) {
+    event.preventDefault();
+    return globalThis.chrome.webview.postMessage('nomad-compose-mail\n'+control.href);
+  }
+  if (action === 'report-problem' && developerMode()) return problemModal();
   if (action === 'edit-medical-supply' || action === 'remove-medical-supply') {
-    const item = (state.medicalSupplies || []).find(entry => entry.id === control.dataset.id && entry.env === state.env);
+    const item = MissionCare.supplies(state).find(entry => entry.id === control.dataset.id);
     if (!item) return;
     if (action === 'edit-medical-supply') return medicalSuppliesModal(item);
     if (save({...state,medicalSupplies:state.medicalSupplies.filter(entry => entry !== item)})) medicalSuppliesModal();
@@ -1684,6 +1726,16 @@ document.addEventListener('input',(event) => {
 });
 document.addEventListener('change',(event) => {
   const control = event.target;
+  if (control.form?.id === 'profile-form' && control.name === 'role') {
+    const custom = control.value === 'custom';
+    $('custom-role-field').hidden = !custom;
+    control.form.elements.customRole.disabled = !custom;
+    control.form.elements.customRole.required = custom;
+  }
+  if (control.form?.id === 'medication-form' && control.name === 'supplyId') {
+    const item = MissionCare.supplies(state).find(entry => entry.id === control.value);
+    if (item) control.form.elements.name.value = item.name;
+  }
   if (control.id === 'mission-stage') {
     setStage(control.value);
     render();
@@ -1712,6 +1764,7 @@ document.addEventListener('change',(event) => {
 document.addEventListener('submit',async (event) => {
   event.preventDefault();
   const form = event.target;
+  if (['medical-supply-search','medication-form','problem-report-form','clinical-model-form'].includes(form.id)) return void submitCareForm(form);
   if (form.id === 'ultrasound-form') return void Ultrasound.analyze();
   if (['stage-form','stage-confirm-form','body-form','journal-form','document-search','records-filter','motor-filter','mood-form','backdrop-form','dismiss-alert-form','restart-chat-form'].includes(form.id)) return workspaceSubmit(form);
   if (form.id === 'medical-supplies-form') {
@@ -1719,9 +1772,11 @@ document.addEventListener('submit',async (event) => {
     const name = form.elements.supply.value.trim();
     const quantity = form.elements.quantity.valueAsNumber;
     if (!name) return notify('Enter a supply name.');
-    if (!Number.isInteger(quantity) || quantity < 0 || quantity > 999999) return notify('Enter a whole number of units.');
+    if (!Number.isFinite(quantity) || quantity < 0 || quantity > 999999) return notify('Enter a valid number of units.');
     const id = form.dataset.id || crypto.randomUUID();
-    const supply = {id,env:state.env,name,quantity,expires:form.elements.expires.value};
+    const previous = MissionCare.supplies(state).find(item => item.id === id);
+    const supply = {...previous,id,catalogId:form.dataset.catalog || previous?.catalogId,env:state.env,name,quantity,
+      location:form.elements.location?.value.trim() || '',expires:form.elements.expires.value};
     if (save({...state,medicalSupplies:[...items.filter(entry => entry.id !== id),supply]})) medicalSuppliesModal();
     return;
   }
@@ -1740,7 +1795,11 @@ document.addEventListener('submit',async (event) => {
   }
   if (form.id === 'profile-form') {
     const profile = Object.fromEntries(['name','role','medical','history','allergies'].map(key => [key,form.elements[key]?.value.trim() || '']));
-    if (session) profile.missionStartDate = form.elements.missionStartDate.value;
+    if (profile.role === 'custom') profile.role = form.elements.customRole.value.trim();
+    if (session) {
+      profile.missionStartDate = form.elements.missionStartDate.value;
+      profile.medicalEmail = form.elements.medicalEmail.value.trim();
+    }
     if (!profile.name || !profile.role) return notify('Complete the crew member and role fields.');
     if (!session) {
       if (form.dataset.pending) return;
@@ -1830,6 +1889,8 @@ async function start() {
   thumbnails.forEach(([key,photo]) => { if (photo) crewThumbnails.set(key,photo); });
   if (!session && !$('modal').open) render();
   void loadMarkdown();
+  void MissionCare.loadCatalog().then(() => { if (session && view() === 'medications') render(); }).catch(error => notify(error.message));
 }
 void start();
 setInterval(refreshWearable,1600);
+setInterval(refreshMedications,30000);

@@ -4,7 +4,9 @@ Open NETIN.exe from this folder to start NOMAD. Keep the interface and WebView2 
 Microsoft Edge WebView2 Runtime and .NET Framework 4.8 are required.
 For AI responses, install Ollama for Windows, open Ollama, and run
 ollama pull qwen3:4b
-For the simulated ultrasound workspace, run ollama pull qwen3-vl:4b.
+ollama pull medgemma1.5:4b
+Leave Ollama running. Use Settings to check Qwen and test MedGemma.
+MedGemma handles medical interpretation and synthetic ultrasound.
 The Ultrasound Samples folder includes synthetic training images.
 
 See INSTALLATION.md for the complete judges' walkthrough. The Windows ZIP

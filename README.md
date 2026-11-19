@@ -10,7 +10,7 @@ Record daily observations, track changes over time, and prepare a handoff for th
 <p align="center">Built for the 2026 NASA Space Apps Challenge · <a href="https://www.spaceappschallenge.org/2026/find-a-team/printnombre_del_equipo/">Team page</a></p>
 
 <p align="center">
-  <a href="https://github.com/nxczmain/Nasa-Space-Apps/raw/refs/heads/main/downloads/NETIN-Windows-x64.zip"><strong>Download for Windows x64</strong></a>
+  <a href="https://github.com/nxczmain/NOMAD_Health_Project/releases/latest/download/NETIN-Windows-x64.zip"><strong>Download for Windows x64</strong></a>
   · <a href="docs/NOMAD-Project-Demonstration.pdf">Project presentation</a>
   · <a href="#installation">Quick start</a>
   · <a href="#judge-walkthrough">Judge walkthrough</a>
@@ -50,7 +50,7 @@ Maya Chen’s Earth Orbit demo shows the daily health routine and the latest sim
   <img src="docs/images/ham-avatar.png" width="160" height="160" alt="Ham, NOMAD's pixel-art chimpanzee avatar">
 </p>
 
-Ham is NOMAD’s onboard **AI assistant**, represented by a pixel-art chimpanzee. It runs on the crew workstation using Qwen3 through Ollama. Ham helps crew members describe what they feel, find relevant mission references and organize their observations for the crew medical officer, who makes clinical decisions.
+Ham is NOMAD’s onboard **AI assistant**, represented by a pixel-art chimpanzee. It runs on the crew workstation through Ollama. MedGemma 1.5 interprets medical references, and Qwen3 explains the cited findings and handles dialogue. Ham helps crew members describe what they feel, find relevant mission references and organize their observations for the crew medical officer, who makes clinical decisions.
 
 The character is inspired by Ham, the chimpanzee who flew into space aboard NASA’s Mercury-Redstone 2 mission on January 31, 1961. [NASA archival photo and mission details](https://www.nasa.gov/image-article/chimpanzee-ham-with-trainers/)
 
@@ -60,7 +60,7 @@ The character is inspired by Ham, the chimpanzee who flew into space aboard NASA
 | **Answers questions and offers support** | Uses the latest message in context. For physical health questions, Ham can show passages from the local Markdown library. In Mental Health, it responds in plain English and suggests a practical next step. |
 | **Helps prepare an urgent handoff** | NOMAD’s local safety checks trigger built-in steps as soon as they recognize an urgent report. Ham can keep the crew member’s original wording for responders. |
 | **Guides the daily routine** | Shows what’s next on Home, gives directions for the daily photo and motor test, and can summarize saved journal entries. Crew members can adjust read-aloud and animation in Settings. |
-| **Reviews simulated ultrasound images** | With the optional Qwen3-VL model, Ham describes visible features in synthetic training images the crew uploads. |
+| **Reviews simulated ultrasound images** | MedGemma describes visible features in synthetic training images the crew uploads. |
 
 ### Ham in the app
 
@@ -108,11 +108,12 @@ flowchart LR
 
 **Requirements** · Windows 10 22H2 or Windows 11 (x64), Microsoft Edge WebView2 Evergreen Runtime and .NET Framework 4.8 or later. Internet access is needed for the downloads. A camera is optional. See the [full setup guide](docs/INSTALLATION.md#what-you-need) for runtime links and troubleshooting.
 
-1. **Download and extract** [NETIN-Windows-x64.zip](https://github.com/nxczmain/Nasa-Space-Apps/raw/refs/heads/main/downloads/NETIN-Windows-x64.zip). In File Explorer, right-click the ZIP and choose **Extract All**. Use a writable folder such as `Documents\NETIN`.
-2. **Set up Ham.** Install and open [Ollama for Windows](https://ollama.com/download/windows). Run the commands below in PowerShell, confirm `qwen3:4b` appears in the list, and leave Ollama running. The model download is about 2.5 GB. [Qwen3 model details](https://ollama.com/library/qwen3:4b)
+1. **Download and extract** [NETIN-Windows-x64.zip](https://github.com/nxczmain/NOMAD_Health_Project/releases/latest/download/NETIN-Windows-x64.zip). In File Explorer, right-click the ZIP and choose **Extract All**. Use a writable folder such as `Documents\NETIN`.
+2. **Set up Ham.** Install and start [Ollama for Windows](https://ollama.com/download/windows). Download both local models and leave Ollama running. Allow about 6 GB for the models.
 
    ```powershell
    ollama pull qwen3:4b
+   ollama pull medgemma1.5:4b
    ollama list
    ```
 
@@ -123,17 +124,9 @@ flowchart LR
    | Earth Orbit | Maya Chen | `OrbitDemo26` |
    | Moon | Mateo Ruiz | `LunarDemo26` |
 
-4. **Check the connection.** In **Settings → Check connection**, look for **Qwen is ready**. The ZIP already includes a starter library with five references. Open **Documents** to see them.
+4. **Check the connection.** In **Settings**, select **Check connection** for Qwen. Under **Medical model**, test the default model `medgemma1.5:4b`.
 
-The [installation guide](docs/INSTALLATION.md) covers runtime setup, importing the full research library and common errors. The [SHA-256 file](downloads/SHA256SUMS.txt) lets you verify the ZIP.
-
-### Import the full Markdown research library
-
-1. Download and extract the [repository ZIP](https://github.com/nxczmain/Nasa-Space-Apps/archive/refs/heads/main.zip). Copy the entire `Investigation (.md)` folder, with its subfolders, into your NOMAD folder or another local location.
-2. In NOMAD, open **Documents → Load Markdown folder** and select `Investigation (.md)`. Wait for **Local library** to show **504 Markdown files** (503 research documents and the collection README).
-3. With Ollama running, open **Assistant** and ask “What does the research library say about sleep and fatigue?” Expand **Sources** in Ham’s answer and select **Open passage** to check the reference.
-
-Each import replaces the loaded library. Select the complete parent folder when updating it. [Research library guide](docs/RESEARCH.md)
+The [installation guide](docs/INSTALLATION.md) covers runtime setup, updates and troubleshooting. The ZIP includes the indexed library. Open **Documents** to browse the bundled references or load a custom Markdown folder. Use [SHA256SUMS.txt](https://github.com/nxczmain/NOMAD_Health_Project/releases/latest/download/SHA256SUMS.txt) to verify the release archive.
 
 ## Judge walkthrough
 
@@ -147,14 +140,13 @@ Start with **Maya Chen · Earth Orbit** to review a 30-day synthetic history and
 | **Health → Mental**. In **Mental health with Ham**, enter “I feel low today and miss working with my crew.” | Ham offers a practical next step in plain English and uses the mood conversation for context. |
 | **Assistant → Chat with Ham**. In a demo profile, send “My crewmate is unresponsive but breathing. What should I do?” | Ham asks you to stay calm and displays numbered steps for getting help. |
 
-Use the [20 simulated Ham conversations](docs/HAM-SIMULATIONS.md) to try more check-in, physical and mental health scenarios, including urgent reports.
+Use the [Simulated Ham conversations](docs/HAM-SIMULATIONS.md) to try more check-in, physical and mental health scenarios, including urgent reports.
 
 <details>
 <summary><strong>Optional demo · Synthetic ultrasound</strong></summary>
 
-1. Run `ollama pull qwen3-vl:4b` with Ollama 0.12.7 or later running. [Qwen3-VL model details](https://ollama.com/library/qwen3-vl:4b)
-2. Open **Health → Physical → Ultrasound simulation**.
-3. Choose `phantom-dark-target.png` from `Ultrasound Samples`, confirm it is simulated, and select **Analyze with Ham**.
+1. Open **Health → Physical → Ultrasound simulation**.
+2. Choose `phantom-dark-target.png` from `Ultrasound Samples`, confirm it is simulated, and select **Analyze with Ham**.
 
 <img src="app/Ultrasound%20Samples/phantom-dark-target.png" width="360" alt="Bundled training image showing a dark target in a simulated ultrasound scan">
 
@@ -164,7 +156,7 @@ Use the [20 simulated Ham conversations](docs/HAM-SIMULATIONS.md) to try more ch
 
 **Desktop and records.** C# WinForms hosts the HTML, CSS and JavaScript interface in WebView2. Browser storage holds the local crew records, daily photos and imported library. The current mission stage is shared on the installation. Saved observations retain their original stage.
 
-**Ham and the mission library.** NOMAD retrieves relevant Markdown passages and passes them to Qwen through Ollama on the same machine. Once setup downloads are complete, the app and model can run locally. Recognized urgent reports trigger a built-in alert before model processing. [Architecture and build instructions](docs/ARCHITECTURE.md)
+**Ham and the mission library.** NOMAD retrieves relevant Markdown passages, checks the medical evidence MedGemma returns and gives the supported findings to Qwen. After the setup downloads, both models run locally. Recognized urgent reports trigger a built-in alert before model processing. [Architecture and build instructions](docs/ARCHITECTURE.md)
 
 **Tests.** With Node.js installed, run the conversation and safety tests from the repository root.
 
@@ -183,7 +175,7 @@ node --test app/tests/*.test.cjs
 | [`downloads/`](downloads/) | Windows x64 ZIP and [SHA-256 checksum](downloads/SHA256SUMS.txt) |
 | [`references/`](references/) | Five starter references for the demo |
 | [`portable/`](portable/) | Scripts for running and updating a USB installation |
-| [`Investigation (.md)/`](Investigation%20%28.md%29/) | 503 importable research documents and conversion manifest |
+| [`Investigation (.md)/`](Investigation%20%28.md%29/) | 554 indexed references and the original conversion manifest |
 | [`investigation/`](investigation/) | 510 original PDFs, including figures and tables |
 
 The research collection covers in-flight medical conditions, mission risks, first aid and standards. The library guide maps the topics and links to the source files. [Research library](docs/RESEARCH.md) · [NASA data and references](docs/NASA-DATA.md)

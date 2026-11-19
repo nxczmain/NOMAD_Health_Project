@@ -1,0 +1,167 @@
+# Tips for Talking With a Health Care Provider About Your Mental Health
+
+Source: https://www.nimh.nih.gov/health/publications/tips-for-talking-with-your-health-care-provider
+
+# Tips for Talking With a Health Care Provider About Your Mental Health
+
+- Download PDF
+
+- 
+
+ En español
+
+Don’t wait for a health care provider to ask about your mental health. Start the conversation. Here are five tips to help prepare and guide you on talking to a health care provider about your mental health and getting the most out of your visit.
+
+## 1.Talk to a primary care provider.
+
+If you don’t know where to start for help, you may want to consider bringing up your mental health concerns during your appointment with a primary care provider (PCP) . A PCP is a health care practitioner people see for common medical problems, and this person is often a doctor. However, a PCP may be a physician assistant or a nurse practitioner.
+
+Mental health is an integral part of health, and people with mental disorders can often be at risk for other medical conditions, such as heart disease or diabetes. In many primary care settings, you may be asked if you’re feeling anxious or depressed, or if you have had thoughts of suicide. Even if your PCP doesn’t ask you first, take this opportunity to talk to your PCP, who can help refer you to a mental health professional. You also can visit the NIMH Find Help for Mental Illnesses webpage for help finding a health care provider or treatment.
+
+## 2. Prepare ahead of your visit.
+
+Health care providers have a limited time for each appointment, so it may be helpful to think of your questions or concerns beforehand.
+
+- Prepare your questions. Make a list of what you want to discuss and any questions or concerns you might have. This worksheet  may help you prepare your questions or concerns.
+
+- Prepare a list of your medications. It’s important to tell your health care provider about all the medications you’re taking, including over-the-counter (nonprescription) drugs, herbal remedies, vitamins, and supplements. This worksheet  can help you track your medications.
+
+- Review your family history. Certain mental illnesses tend to run in families and having a relative with a mental disorder could mean you’re at higher risk. Knowing your family mental health history can help determine your risk for certain disorders. It can also help your health care provider recommend actions for reducing your risk and enable you and your provider to look for early warning signs.
+
+## 3. Consider bringing a friend or relative.
+
+It can be difficult to absorb all the information your health care provider shares, especially if you are not feeling well. Sometimes it’s helpful to bring a close friend or relative to your appointment. A companion can be there for support, help you take notes, and remember what you and the provider discussed. They also might be able to offer input to your provider about how they think you are doing. Some people like having a friend or family member there throughout an appointment, while others prefer to first meet alone with a health care provider and then have a trusted friend or relative join them when recommendations for treatments are discussed.
+
+## 4. Be honest.
+
+Your health care provider can help you get better only if you have open and honest communication. It is important to remember that discussions between you and a health care provider are private and cannot be shared with anyone without your expressed permission. Describe all your symptoms to your provider and be specific about when they started, how severe they are, and how often they occur. You should also share any major stressors or recent life changes that could be triggering or exacerbating your symptoms.
+
+Symptoms of mental illnesses may include:
+
+- Persistent sad, anxious, or “empty” mood
+
+- Feelings of hopelessness or pessimism
+
+- Irritability
+
+- Feelings of guilt, worthlessness, or helplessness
+
+- Loss of interest or pleasure in hobbies and activities
+
+- Decreased energy or fatigue
+
+- Moving or talking more slowly
+
+- Feeling restless or having trouble sitting still
+
+- Difficulty concentrating, remembering, or making decisions
+
+- Difficulty sleeping, early-morning awakening, or oversleeping
+
+- Appetite or weight changes (or both)
+
+- Thoughts of death or suicide, or suicide attempts
+
+- Aches or pains, headaches, cramps, or digestive problems without a clear physical cause and/or that do not ease even with treatment
+
+## 5. Ask questions.
+
+If you have questions or concerns, ask the health care provider for more information about the mental health diagnosis or treatment. If a provider suggests a treatment option that you’re not comfortable or familiar with, express your concerns and ask if there are other options. You may decide to try a combination of treatment approaches and want to consider getting another opinion from a different health care provider. It’s important to remember that there is no “one-size-fits-all” treatment. To find one that works best for you, you may need to talk to a few other health care providers to find someone you are comfortable with and try several different treatments or a combination of treatments.
+
+U.S. DEPARTMENT OF HEALTH AND HUMAN SERVICES
+
+National Institutes of Health
+
+NIH Publication No. 22-MH-8094
+
+## Reprints
+
+The information in this publication is in the public domain and may be reused or copied without permission. However, you may not reuse or copy images. Please cite the National Institute of Mental Health as the source. Read our copyright policy to learn more about our guidelines for reusing NIMH content.
+
+# Tips for Talking With a Health Care Provider About Your Mental Health
+
+Source: https://www.nimh.nih.gov/health/publications/tips-for-talking-with-your-health-care-provider
+
+Original PDF pages: 2
+
+## PDF page 1
+
+Tips for Talking With a 
+Health Care Provider  
+About Your Mental Health
+Don’t wait for a health care provider to ask about your mental health. 
+Start the conversation. Here are five tips to help prepare and guide you 
+on talking to a health care provider about your mental health and getting 
+the most out of your visit.
+1. Talk to a primary care provider.
+If you don’t know where to start for help, you may want to consider bringing up your mental 
+health concerns during your appointment with a primary care provider (PCP) . A PCP is a health 
+care practitioner people see for common medical problems, and this person is often a doctor. 
+However, a PCP may be a physician assistant or a nurse practitioner. 
+Mental health is an integral part of health, and people with mental disorders can often be at risk 
+for other medical conditions, such as heart disease or diabetes. In many primary care settings, 
+you may be asked if you’re feeling anxious or depressed, or if you have had thoughts of suicide. 
+Even if your PCP doesn’t ask you first, take this opportunity to talk to your PCP, who can help 
+refer you to a mental health professional. You also can visit the NIMH Find Help for Mental 
+Illnesses webpage for help finding a health care provider or treatment.
+2. Prepare ahead of your visit.
+Health care providers have a limited time for each appointment, so it may be helpful to think of 
+your questions or concerns beforehand.
+ ● Prepare your questions. Make a list of what you want to discuss and any questions or concerns
+you might have. This worksheet may help you prepare your questions or concerns.
+● Prepare a list of your medications. It’s important to tell your health care provider about all the
+medications you’re taking, including over-the-counter (nonprescription) drugs, herbal remedies,
+vitamins, and supplements. This worksheet can help you track your medications.
+● Review your family history. Certain mental illnesses tend to run in families and having a relative
+with a mental disorder could mean you’re at higher risk. Knowing your family mental health
+history can help determine your risk for certain disorders. It can also help your health care
+provider recommend actions for reducing your risk and enable you and your provider to look
+for early warning signs.
+
+## PDF page 2
+
+NIH Publication No. 22-MH-8094
+Follow NIMH on  
+Social Media @NIMHgov
+www.nimh.nih.gov 
+3. Consider bringing a friend or relative.
+It can be difficult to absorb all the information your health care provider shares, especially if 
+you are not feeling well. Sometimes it’s helpful to bring a close friend or relative to your 
+appointment. A companion can be there for support, help you take notes, and remember what 
+you and the provider discussed. They also might be able to offer input to your provider about 
+how they think you are doing. Some people like having a friend or family member there 
+throughout an appointment, while others prefer to first meet alone with a health care provider 
+and then have a trusted friend or relative join them when recommendations for treatments 
+are discussed.
+4. Be honest.
+Your health care provider can help you get better only if you have open and honest 
+communication. It is important to remember that discussions between you and a health care 
+provider are private and cannot be shared with anyone without your expressed permission. 
+Describe all your symptoms to your provider and be specific about when they started, how 
+severe they are, and how often they occur. You should also share any major stressors or recent 
+life changes that could be triggering or exacerbating your symptoms.
+Symptoms of mental illnesses may include:
+● Persistent sad, anxious, or “empty” mood
+● Feelings of hopelessness or pessimism
+● Irritability
+● Feelings of guilt, worthlessness, or helplessness
+● Loss of interest or pleasure in hobbies and activities
+● Decreased energy or fatigue
+● Moving or talking more slowly
+● Feeling restless or having trouble sitting still
+● Difficulty concentrating, remembering, or making decisions
+● Difficulty sleeping, early-morning awakening, or oversleeping
+● Appetite or weight changes (or both)
+● Thoughts of death or suicide, or suicide attempts
+● Aches or pains, headaches, cramps, or digestive problems without a clear
+p
+hysical cause and/or that do not ease even with treatment
+5. Ask questions.
+If you have questions or concerns, ask the health care provider for more information about the 
+mental health diagnosis or treatment. If a provider suggests a treatment option that you’re not 
+comfortable or familiar with, express your concerns and ask if there are other options. You may 
+decide to try a combination of treatment approaches and want to consider getting another 
+opinion from a different health care provider. It’s important to remember that there is no “one-
+size-fits-all” treatment. To find one that works best for you, you may need to talk to a few 
+other health care providers to find someone you are comfortable with and try several different 
+treatments or a combination of treatments.

@@ -215,7 +215,7 @@
 
   function trainingScenario(text) {
     const folded = normalize(text).trim();
-    return /^(?:in (?:a |this )?(?:simulation|drill|scenario)|(?:this (?:is|is meant to be)|its) (?:a |only a )?(?:simulation|drill|scenario|hypothetical)|hypothetically|for (?:a |this )?(?:grammar|spelling) (?:example|exercise)|how do (?:i|you) (?:spell|translate|pronounce)|is ["“].{1,180}["”] (?:spelled|grammatically|correct)|what if|what (?:would|should) (?:i|you) do if|how (?:would|should) (?:i|you) respond if|if (?:someone|a person|i)|en (?:una |esta )?simulacion|esto es (?:una )?simulacion|que (?:hago|haria|pasaria) si)\b/.test(folded) &&
+    return /^(?:in (?:a |this )?(?:simulation|drill|scenario)|(?:this (?:is|is meant to be)|its|it is) (?:(?:just|only) )?(?:a )?(?:simulation|drill|scenario|hypothetical)|(?:training|practice) (?:scenario|drill)|hypothetically|for (?:a |this )?(?:grammar|spelling) (?:example|exercise)|how do (?:i|you) (?:spell|translate|pronounce)|is ["“].{1,180}["”] (?:spelled|grammatically|correct)|what if|what (?:would|should) (?:i|you) do if|how (?:would|should) (?:i|you) respond if|if (?:someone|a person|i)|en (?:una |esta )?(?:simulacion|simulacro)|(?:esto )?es (?:solo )?(?:una? )?(?:simulacion|simulacro)|que (?:hago|haria|pasaria) si)\b/.test(folded) &&
       !/\b(?:this is real|not a drill|en verdad|no es un simulacro|actual emergency|(?:but|pero) (?:i actually|i really|right now|ahora mismo|de verdad))\b/.test(folded);
   }
 
@@ -304,12 +304,15 @@
     }
     const reportText = report.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[’']/g,'');
     const absent = /\b(?:not breathing|isnt breathing|stopped breathing|only gasping|no respira|dejo de respirar|solo jadea)\b/.test(reportText);
-    const breathing = absent ?
-      'If they are not breathing normally or are only gasping, start CPR and use a portable defibrillator as soon as one is available under your emergency procedure.' :
-      'Stay with them and keep checking their breathing. If it stops or they are only gasping, start CPR and use a portable defibrillator as soon as one is available under your emergency procedure.';
-    const positioning = earth && !absent ? ' If breathing normally, place them on their side if you can do so safely and do not suspect a head, neck or back injury.' : '';
-    const paragraph = '[[serio]] Stay as calm as you can. Take these steps now.\n1. '+action+
-      '\n2. Tell them the person won’t wake up and say whether they are breathing normally.\n3. '+breathing+positioning;
+    const steps = [...(earth ? [action] : ['Alert the crew medical officer now.','Activate the onboard emergency procedure now.']),
+      'Tell responders the person won’t wake up and whether they are breathing normally.'];
+    if (!absent) steps.push('Stay with them and keep checking their breathing.');
+    steps.push('If they are not breathing normally or are only gasping, start CPR according to your training.');
+    steps.push(earth ? 'If CPR is needed, use a portable defibrillator as soon as available.' :
+      'If CPR is needed, use the defibrillator once the casualty is secured, following the onboard checklist.');
+    if (earth && !absent) steps.push('If breathing normally, place them on their side if safe and no suspected head, neck or back injury.');
+    const paragraph = '[[serio]] Stay as calm as you can. Take these steps now.\n'+
+      steps.map((step,index) => (index+1)+'. '+step).join('\n');
     return {text:paragraph,paragraph,urgent:true,
       sources:[{ref:1,title:'American Red Cross · Unresponsive and breathing',url:'https://www.redcross.org/take-a-class/resources/learn-first-aid/unresponsive-and-breathing-person'}]};
   }
@@ -375,9 +378,15 @@
       const readings = embeddedReadings(raw);
       const answers = {...current.answers,...readings,symptoms:'',statusUpdate:raw};
       for (const key of symptomFields.slice(1)) delete answers[key];
-      return {...current,next:undefined,topic:undefined,answers,values:{...current.values,...readings,impact:'none'},
+      return {...current,next:undefined,clarificationFor:undefined,topic:undefined,answers,values:{...current.values,...readings,impact:'none'},
         acknowledgment:statusAcknowledgment(update),
         turns:[...current.turns,{role:'assistant',content:prompt.prompt},{role:'user',content:raw}]};
+    }
+    if (!skip && asksQuestion(raw)) {
+      const explanation = explainQuestion(prompt,raw);
+      return {...current,clarificationFor:prompt.key,acknowledgment:undefined,
+        turns:[...current.turns,{role:'assistant',content:prompt.prompt},{role:'user',content:raw},
+          {role:'assistant',content:explanation || 'Let’s answer your question before continuing the check-in.'}]};
     }
     if (prompt.options && value) {
       const match = Object.keys(prompt.options).find(key => key === value.toLowerCase() || prompt.options[key].toLowerCase() === value.toLowerCase());
@@ -411,8 +420,31 @@
     const displayed = skip ? 'Skipped' : prompt.options?.[value] || (prompt.metric && (typeof value === 'number' || Array.isArray(value)) &&
       !Object.keys(readings).length ? E.format(value)+' '+prompt.metric.unit : raw || 'No additional note');
     const answers = {...current.answers,...readings,...(measurementDeferred ? {} : {[prompt.key]:value})};
-    return {...current,next:undefined,acknowledgment:undefined,values:{...values,...readings},answers,
+    return {...current,next:undefined,clarificationFor:undefined,acknowledgment:undefined,values:{...values,...readings},answers,
       turns:[...current.turns,{role:'assistant',content:prompt.prompt},{role:'user',content:displayed}]};
+  }
+
+  function asksQuestion(text) {
+    const value = normalize(text).trim();
+    return /\?/.test(value) || /^(?:(?:what|why|how|when|where) (?:do|does|did|is|are|am|can|could|would|should|much|many|often|long|to|about|exactly|if)|can you|could you|do you mean|que significa|que quieres decir|como (?:puedo|se|debo)|por que|puedes explicar)\b/.test(value);
+  }
+
+  function explainQuestion(prompt, text) {
+    const value = normalize(text);
+    if (/\b(?:waking up|wake up|despert\w*)\b/.test(value) && /sleep|dorm|wak/i.test(prompt.prompt)) {
+      return 'By waking up, I mean becoming awake during the time you intended to sleep, including waking repeatedly or too early.';
+    }
+    if (prompt.metric && /\b(?:what|mean|significa|which unit|que unidad)\b/.test(value)) {
+      return 'I’m asking for your recorded '+prompt.metric.label.toLowerCase()+' in '+prompt.metric.unit+'. '+prompt.metric.prompt;
+    }
+    const explanations = {
+      onset:'I mean when you first noticed this change, such as today, yesterday or a few days ago.',
+      impact:'I mean whether the symptom makes your usual tasks harder, or whether you need help now.',
+      moodImpact:'I mean whether your mood has made it harder to focus, work or get through your usual duties.',
+      'context-sleep':'I’m asking what affected your sleep, such as your schedule, waking during sleep or difficulty falling asleep.',
+      symptoms:'You can describe physical symptoms, changes in sleep or how you feel emotionally.'
+    };
+    return /\b(?:mean|explain|meaning|significa|explica|quieres decir)\b/.test(value) ? explanations[prompt.key] || '' : '';
   }
 
   function toEntry(current, previous) {
@@ -438,5 +470,5 @@
   }
 
   root.NetinCheckIn = {create,question,questions,isAdaptiveQuestion,recap,restore,apply,applyContext,urgent,toEntry,differingReadings,symptomTopic,symptomQuestions,moodReasonReported,
-    statusUpdate,routineResponse,trainingScenario,bloodCough,emergencyKind,emergencyReply,interrupt,emergencySource};
+    statusUpdate,routineResponse,trainingScenario,bloodCough,emergencyKind,emergencyReply,interrupt,emergencySource,asksQuestion,explainQuestion};
 })(globalThis);
