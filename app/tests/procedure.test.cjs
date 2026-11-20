@@ -19,7 +19,7 @@ const sequence = {
   ]
 };
 
-function load(reply = sequence, accepted) {
+function load(reply = sequence, accepted, rewrite, rewriteReview = []) {
   const calls = [];
   let receive;
   const context = createContext({setTimeout,clearTimeout,chrome:{webview:{
@@ -28,7 +28,13 @@ function load(reply = sequence, accepted) {
       const {id,body} = JSON.parse(raw.slice('astra-ai\n'.length));
       calls.push(body);
       const proposed = body.format?.properties?.reviewed ? JSON.parse(body.messages[1].content).steps : [];
-      const result = body.format?.properties?.reviewed ?
+      const data = JSON.parse(body.messages[1].content);
+      const result = body.format?.properties?.items ? (rewrite ? rewrite(data.items) : data) :
+        body.format?.properties?.accepted ? {accepted:rewriteReview} :
+        body.format?.properties?.route ? {
+        route:'medical',responseMode:'procedure',search:'',
+        report:data.recent.filter(turn=>turn.role === 'user').at(-1)?.content || data.latest
+      } : body.format?.properties?.reviewed ?
         {reviewed:proposed.filter(step=>!accepted || accepted.includes(step.index)).map(({index,text})=>({index,text}))} : reply;
       queueMicrotask(() => receive({data:{channel:'astra-ai',id,result:JSON.stringify(result)}}));
     }
@@ -60,6 +66,166 @@ test('recognizes the screenshot drill clarification and preserves real danger ov
   assert.equal(CI.emergencyKind('This is a drill. But right now he cannot breathe.'),'medical');
   assert.equal(AI.chatIntent('How can I organize a chess night?',history).health,false);
   assert.equal(AI.chatIntent('This is a drill.',[user('We are practising docking manoeuvres.')]).health,false);
+});
+
+test('the reported heart attack in the screenshot is current, medical and procedural', async () => {
+  const message='A crewmate is having a heart attack, what is the procedure that i should do. He is floating';
+  const {CI,AI,calls}=load();
+  assert.equal(CI.emergencyKind(message),'medical');
+  assert.equal(CI.emergencyKind('In this drill, '+message),'');
+  assert.equal(CI.emergencyKind('What if a crewmate is having a heart attack?'),'');
+  assert.equal(CI.emergencyKind('My crewmate is not having a heart attack.'),'');
+  assert.equal(AI.chatIntent(message,[]).procedure,true);
+  const interpreted=await AI.interpretMessage(message,[]);
+  assert.equal(interpreted.route,'medical');
+  assert.equal(interpreted.responseMode,'procedure');
+  assert.equal(calls[0].model,AI.clinicalModel());
+});
+
+function spaceflightGuide(title) {
+  const relative = 'First Aid/Spaceflight Emergencies/'+title+'.md';
+  const markdown = readFileSync(join(__dirname,'..','..','Investigation (.md)',relative),'utf8');
+  return {id:relative,relative,title,markdown,excerpts:[{text:markdown.replace(/\s+/g,' ')}]};
+}
+
+test('orbital CPR applies stable support before compressions and restraint before defibrillation', async () => {
+  const {AI,CI}=load();
+  const result=await AI.answer('What is the CPR procedure?',[],[spaceflightGuide('Microgravity CPR')],{activeEnvironment:'Earth orbit'});
+  assert.equal(result.steps.length,9);
+  assert.match(result.steps[0].phase,/^Phase 1/);
+  assert.match(result.steps[1].text,/stable support/);
+  assert.match(result.steps[2].text,/100–120.*Do not delay compressions/);
+  assert.match(result.steps[4].phase,/^Phase 2/);
+  assert.match(result.steps[4].text,/restraint surface before applying the defibrillator/);
+  assert.match(result.steps[7].text,/2 breaths for every 30 compressions/);
+  assert.match(result.steps[8].text,/every 2 minutes/);
+  assert.equal(result.sources[0].title,'Microgravity CPR');
+  assert.match(CI.emergencyReply('unresponsive','not breathing normally','orbit').text,/establish stable support/);
+  assert.doesNotMatch(CI.emergencyReply('unresponsive','not breathing normally','moon').text,/establish stable support/);
+});
+
+test('MedGemma receives gravity and condition-specific references in orbit and on the Moon', async () => {
+  const docs=['Cabin atmosphere and EVA emergencies','Anaphylaxis and medication emergencies',
+    'Suspected cardiac emergency in spaceflight'].map(spaceflightGuide);
+  docs.push({id:'distractor',title:'Unrelated first aid',excerpts:[{text:'Steps for cabin pressure, heart attack and anaphylaxis.'}]});
+  for (const [question,stage,gravity,title] of [
+    ['What is the procedure for cabin pressure loss?', 'Earth orbit','microgravity','Cabin atmosphere and EVA emergencies'],
+    ['What are the procedure steps for anaphylaxis?', 'Lunar surface','partial gravity','Anaphylaxis and medication emergencies'],
+    ['What is the procedure for a heart attack? He is floating.', 'Earth','microgravity','Suspected cardiac emergency in spaceflight']
+  ]) {
+    const {AI,calls}=load({paragraph:'',references:[],steps:[]});
+    await AI.interpretMessage(question,[],stage);
+    await AI.answer(question,[],docs,{activeEnvironment:stage},'',false);
+    const draft = calls.find(call=>call.format?.properties?.steps);
+    assert.equal(JSON.parse(calls[0].messages[1].content).mission.gravity,gravity);
+    const input = JSON.parse(draft.messages[1].content);
+    assert.equal(input.mission.gravity,gravity);
+    assert.equal(input.excerpts[0].title,title);
+    assert.equal(draft.model,AI.clinicalModel());
+  }
+  const {AI}=load();
+  assert.equal(AI.missionContext('What are the CPR steps on Earth?','Earth orbit').gravity,'Earth gravity');
+  assert.equal(AI.missionContext('What are the CPR steps on Mars?','Earth orbit').gravity,'partial gravity');
+});
+
+test('the live heart-attack wording opens both CPR phases immediately and keeps the arrest condition', async () => {
+  const {context,calls}=load();
+  context.testLibrary=[spaceflightGuide('Microgravity CPR')];
+  context.crypto={randomUUID:()=> 'test-incident'};
+  runInContext(`
+    const E=AstraEngine, AI=AstraAssistant, CI=NetinCheckIn;
+    const library=testLibrary, session={}, chatMode='companion';
+    let state={env:'orbit',conversations:[],dismissedAlerts:[]}, chat=[], busy=false, hamChatWork='', summaryPending=false;
+    const stopSpeech=()=>{},syncHamPresence=()=>{},showRoute=()=>{},addEmergencyHandoff=()=>{};
+    const addClinicalProcedure=()=>{throw Error('Unexpected second procedure request');};
+    const datedTurns=turns=>turns.map(turn=>({date:E.dateKey(),env:'orbit',...turn}));
+    const save=next=>{state=next;return true;};
+    const activeEmergency=()=>null, view=()=> 'home', today=()=>undefined, flow=()=>({});
+    const environment=()=>E.environments.orbit;
+    const escape=value=>String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    const documentTarget=source=>'<a>'+escape(source.title)+'</a>';
+  `,context);
+  for (const name of ['sendMessage','sourcesView','summaryParagraph','paragraphReply']) {
+    runInContext(appFunction(name),context);
+  }
+  await runInContext("sendMessage('A crewmate is having a heart attack, what is the procedure that I should do. He is floating')",context);
+  const reply=runInContext('state.conversations.at(-1)',context);
+  assert.equal(reply.urgent,true);
+  assert.equal(reply.steps.length,9);
+  assert.match(reply.introduction,/Start CPR only if the crewmate is unresponsive/);
+  const html=runInContext('paragraphReply(state.conversations.at(-1))',context);
+  assert.equal((html.match(/class="protocol-steps"/g)||[]).length,2);
+  assert.match(html,/<strong>Establish support while floating\.<\/strong>/);
+  assert.equal(calls.length,0);
+});
+
+test('Qwen cannot remove steps or add actions to MedGemma procedure drafts', async () => {
+  for (const rewrite of [
+    items => ({items:items.slice(0,1)}),
+    items => ({items:items.map(item => ({...item,text:item.text ? item.text+' Wait until tomorrow.' : ''}))})
+  ]) {
+    const {AI,calls}=load(sequence,undefined,rewrite);
+    const result=await AI.answer('What steps does the first aid document describe for CPR?',[],library,{},'',false);
+    assert.equal(result.steps.length,3);
+    assert.doesNotMatch(result.text,/tomorrow/);
+    const qwen=calls.filter(call=>call.model===AI.model);
+    assert.ok(qwen.length);
+    for(const call of qwen) assert.deepEqual(Object.keys(JSON.parse(call.messages[1].content)),['items']);
+    assert.equal(calls[0].model,AI.clinicalModel());
+    assert.deepEqual(Array.from(result.steps,step=>step.references[0]),[1,1,1]);
+  }
+});
+
+test('heart-attack retrieval excludes an unrelated NIMH passage despite generic matching words', async () => {
+  const evidence='Call the crew medical officer for assistance.';
+  const {AI,calls}=load({paragraph:'',references:[],steps:[{text:'Call the crew medical officer.',references:[1],evidence}]});
+  const documents=[
+    {id:'nimh',title:'autism-spectrum-disorder',excerpts:[{heading:'Having an unusual tone of voice',text:'Having an unusual tone of voice and trouble understanding other people.'}]},
+    {id:'cardiac',title:'Acute Coronary Syndrome',excerpts:[{heading:'Treatment scope',text:evidence}]}
+  ];
+  const result=await AI.answer('A crewmate is having a heart attack. What is the procedure?',[],documents,{},'',false);
+  const input=JSON.parse(calls[0].messages[1].content);
+  assert.ok(input.excerpts.every(passage=>passage.title==='Acute Coronary Syndrome'));
+  assert.equal(result.sources[0].id,'cardiac');
+});
+
+test('a quote about an unrelated observation cannot support a breathing instruction', async () => {
+  const evidence='Having an unusual tone of voice.';
+  const {AI,calls}=load({paragraph:'',references:[],steps:[{text:'Check breathing immediately.',references:[1],evidence}]});
+  const result=await AI.answer('What CPR steps does this reference support?',[],[{id:'unrelated',title:'Reference',excerpts:[{text:evidence}]}],{},'',false);
+  assert.equal(result.sources.length,0);
+  assert.ok(result.steps.every(step=>step.references.length===0));
+  assert.ok(calls.every(call=>call.model===AI.clinicalModel()));
+});
+
+test('historical clinical equipment actions keep the officer role and blank form fields are removed', async () => {
+  const draft={paragraph:'',references:[],steps:[
+    {text:'Administer O2 with Russian Gas Mask.',references:[1],evidence:'Administer O2 with Russian Gas Mask.'},
+    {text:'Perform chest examination.',references:[1],evidence:'Perform chest examination.'},
+    {text:'√Heart Sounds with Stethoscope Regular ____________',references:[1],evidence:'√Heart Sounds with Stethoscope Regular ____________'},
+    {text:'Contact Surgeon.',references:[1],evidence:'Contact Surgeon.'}
+  ]};
+  const {AI}=load(draft);
+  const result=await AI.answer('What steps does this chest pain reference describe?',[],[{
+    id:'iss',title:'ISS-Medical-Checklist-2001',status:'Historical ISS checklist, 2001',
+    excerpts:[{text:draft.steps.map(step=>step.evidence).join(' ')}]
+  }],{},'',false);
+  assert.equal(result.steps.length,3);
+  assert.match(result.steps[0].text,/^Ask the crew medical officer/);
+  assert.match(result.steps[1].text,/^Ask the crew medical officer/);
+  assert.doesNotMatch(result.text,/____|√/);
+});
+
+test('an accepted simplification still cannot remove the medical officer role', async () => {
+  const evidence='Oxygen support is arranged by the crew medical officer.';
+  const {AI}=load({paragraph:'',references:[],steps:[{
+    text:'Ask the crew medical officer to arrange oxygen support.',references:[1],evidence
+  }]},undefined,items=>({items:items.map(item=>({...item,text:item.text.replace('crew medical officer','crew medical:')}))}),[0,1]);
+  const result=await AI.answer('What steps does this medical oxygen support procedure describe?',[],[{
+    id:'oxygen',title:'Oxygen support',excerpts:[{text:evidence}]
+  }],{},'',false);
+  assert.match(result.steps[0].text,/crew medical officer/);
+  assert.doesNotMatch(result.text,/medical:/);
 });
 
 test('returns numbered actions, preserves their conditions and sends the scenario without personal logs', async () => {

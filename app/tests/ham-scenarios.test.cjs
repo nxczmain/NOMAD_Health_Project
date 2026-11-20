@@ -10,11 +10,12 @@ function load(respond) {
   const context = createContext({setTimeout,clearTimeout,chrome:{webview:{
     addEventListener(_event,listener) { receive = listener; },
     postMessage(raw) {
-      const {id,body} = JSON.parse(raw.slice('astra-ai\n'.length));
+      const {id,operation,body} = JSON.parse(raw.slice('astra-ai\n'.length));
       calls.push(body);
       queueMicrotask(() => {
-        const result = respond?.(body);
-        receive({data:{channel:'astra-ai',id,result:result && JSON.stringify(result),error:result ? undefined : 'Offline'}});
+        const result = respond?.(body,operation);
+        receive({data:{channel:'astra-ai',id,result:operation === 'status' ? result : result && JSON.stringify(result),
+          error:result ? undefined : 'Offline'}});
       });
     }
   }}});
@@ -44,6 +45,40 @@ const emptyMood = {moodCheckIns:[],moodScores:[]};
 const exampleLibrary = [{title:'Crew notes on wrist pain',id:'wrist',excerpts:[
   {page:1,text:'For wrist pain, tell the crew medical officer when it began and which hand movements make it worse.'}
 ]}];
+
+test('MedGemma authors both replies while the wording option selects Qwen 4B or 8B', async () => {
+  const {AI,calls} = load((body,operation) => operation === 'status' ? {ready:true,deepReady:true} :
+    body.format?.properties?.items ? JSON.parse(body.messages[1].content) :
+    {paragraph:'Record when the wrist pain started and which movements make it worse.',references:[1]});
+  await AI.modelStatus();
+  const routine = await AI.answer('What should I record about wrist pain?',[],exampleLibrary,{});
+  const deep = await AI.answer('What should I record about wrist pain?',[],exampleLibrary,{},'',true,'',true);
+  assert.equal(routine.localModel,'qwen3:4b');
+  assert.equal(deep.localModel,'qwen3:8b');
+  const explanations = calls.filter(body => body.model === AI.model || body.model === AI.deepModel);
+  assert.deepEqual(explanations.map(body => body.model),['qwen3:4b','qwen3:8b']);
+  assert.deepEqual(explanations[0].messages,explanations[1].messages);
+});
+
+test('a missing item from Qwen 8B retries the wording with 4B and preserves MedGemma citations', async () => {
+  const {AI,calls} = load((body,operation) => operation === 'status' ? {ready:true,deepReady:true} :
+    body.format?.properties?.items ? operation === 'deep' ? {items:[]} : JSON.parse(body.messages[1].content) :
+    {paragraph:'Record when the wrist pain started.',references:[1]});
+  await AI.modelStatus();
+  const reply = await AI.answer('What should I record about wrist pain?',[],exampleLibrary,{},'',true,'',true);
+  assert.equal(reply.localModel,'qwen3:4b');
+  assert.equal(reply.sources[0].id,'wrist');
+  const explanations = calls.filter(body => body.model === AI.model || body.model === AI.deepModel);
+  assert.deepEqual(explanations.map(body => body.model),['qwen3:8b','qwen3:4b']);
+  assert.deepEqual(explanations[0].messages,explanations[1].messages);
+});
+
+test('an unavailable MedGemma author never delegates medical interpretation to Qwen', async () => {
+  const {AI,calls}=load();
+  await assert.rejects(()=>AI.answer('What does this reference say about wrist pain?',[],exampleLibrary,{},'',false));
+  assert.ok(calls.length);
+  assert.ok(calls.every(call=>call.model===AI.clinicalModel()));
+});
 
 test('01 Daily check-in · the exact misspelling in the screenshot is understood', () => {
   const check = replyToCheckIn(makeCheckIn(),'Im feeling stalb eand good now');
@@ -177,7 +212,7 @@ test('11 Physical · a localized injury gets a short, sourced answer about that 
   const result = await setup.AI.answer(report,[],exampleLibrary,{activeEnvironment:'Earth'},'wrist pain',false,'physical');
   assert.equal(result.sources.length,1);
   assert.match(result.text,/wrist/);
-  const explanation = setup.calls.find(call => call.model === 'qwen3:4b');
+  const explanation = setup.calls.find(call => call.model === setup.AI.clinicalModel());
   assert.equal(JSON.parse(explanation.messages[1].content).latestMessage,report);
   assert.match(explanation.messages[0].content,/plain English.*three short sentences/);
 });

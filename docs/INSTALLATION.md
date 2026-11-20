@@ -1,6 +1,6 @@
 # Install or update NOMAD on Windows
 
-[Download NETIN-Windows-x64.zip](https://github.com/nxczmain/NOMAD_Health_Project/releases/latest/download/NETIN-Windows-x64.zip). The ZIP contains NOMAD, its demo profiles, synthetic ultrasound samples and the indexed research library.
+[Download NETIN-Windows-x64.zip](https://github.com/nxczmain/NOMAD_Health_Project/raw/refs/heads/main/downloads/NETIN-Windows-x64.zip). The ZIP contains NOMAD, its demo profiles, synthetic ultrasound samples and the indexed research library.
 
 ## First installation
 

@@ -480,7 +480,6 @@ canvas.ham-avatar { background:#daeae9 url("assets/ham.svg") center/cover no-rep
 .ham-tour-offer { margin-top:10px; }
 .motor-countdown { font-size:1.25rem;font-weight:750;color:var(--blue); }
 .ham-motor #motor-status:empty { display:none; }
-.ham-toggle { display:flex;align-items:center;gap:8px;margin-top:14px; }
 .ham-pending .speaker { margin:0;color:var(--muted); }
 .ham-status.button { display:flex;align-items:center;gap:9px;width:100%;padding:4px 6px;text-align:left;font-size:.8rem;line-height:1.3; }
 .ham-status-short { display:none; }

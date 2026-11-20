@@ -307,7 +307,7 @@ const hamTour = [
 ];
 const hamReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const passiveHam = {sidebar:{},panel:{}};
-const canAnimateHam = () => appearance.animateHam && !hamReducedMotion.matches;
+const canAnimateHam = () => appearance.hamMotion === 'on' || appearance.hamMotion === 'system' && !hamReducedMotion.matches;
 const hamUrgent = () => Boolean(session && activeEmergency());
 
 function drawHam(canvas, pose = 'neutral') {
@@ -326,7 +326,7 @@ function setPassiveHam(slot, canvas, pose = 'neutral') {
     slot.player = undefined;
   }
   if (active) {
-    slot.player ||= HamAvatar.crear(null,{volverNeutralMs:0,parpadeo:false});
+    slot.player ||= HamAvatar.crear(null,{volverNeutralMs:0,parpadeo:false,movimientoReducido:false});
     slot.player.agregarLienzo(canvas,Number(canvas.dataset.escala));
     if (pose !== slot.player.exp) slot.player.expresion(pose);
   } else {
@@ -341,7 +341,7 @@ function syncHamPresence() {
   const sidebar = $('ham-status');
   const sidePose = hamPoseFor({model,busy:busy || !!summaryPending,urgent});
   if (sidebar && session) {
-    const label = {serio:'Ham · Emergency guidance',dormido:'Ham is asleep · Qwen not connected',
+    const label = {serio:'Ham · Emergency guidance',dormido:'Ham is asleep · MedGemma not connected',
       pensando:'Ham is thinking…',neutral:'Ham is ready'}[sidePose];
     const short = {serio:'Urgent',dormido:model === 'checking' ? 'Checking' : 'Asleep',pensando:'Thinking',neutral:'Ready'}[sidePose];
     if (sidebar.getAttribute('aria-label') !== label) {
@@ -452,7 +452,7 @@ function attachHam(selected, restore = false) {
     if (!canvas || canvas.closest('.assistant-head') || !canAnimateHam() || hamUrgent()) return;
     if (!canvas.getContext('2d')) return;
     if (passiveHam.panel.canvas === canvas) setPassiveHam(passiveHam.panel);
-    hamPlayer = HamAvatar.crear(canvas,{volverNeutralMs:0});
+    hamPlayer = HamAvatar.crear(canvas,{volverNeutralMs:0,movimientoReducido:false});
     hamCanvases = [canvas];
     syncHamPresence();
   } catch { /* CSS shows the original sprite on unsupported canvases. */ }
@@ -726,8 +726,10 @@ function temperatureAlert(entry) {
 }
 
 function emergencyAnswer(kind, report = '') {
-  const reply = CI.emergencyReply(kind,report,stageChoice);
-  if (kind === 'unresponsive' && stageChoice !== 'earth') {
+  const mission = AI.missionContext(report,E.environments[stageChoice].name);
+  const stage = mission.spaceflight ? (mission.gravity === 'microgravity' ? 'orbit' : 'moon') : 'earth';
+  const reply = CI.emergencyReply(kind,report,stage);
+  if (kind === 'unresponsive' && mission.gravity === 'microgravity') {
     const document = library.find(item => item.title === 'ERC-2025-Special-Circumstances');
     const excerpt = document?.excerpts.find(entry => entry.page === 43 && entry.text.includes('once the patient is secured'));
     if (excerpt) reply.sources.push({...excerpt,ref:2,id:document.id,title:document.title,url:document.url});
@@ -1023,18 +1025,27 @@ function summaryParagraph(value) {
 }
 
 function paragraphReply(value) {
+  const handoff = value.handoff ? '<p class="micro emergency-handoff">Report to responders: “'+escape(AI.clearTags(value.handoff))+'”</p>' : '';
   const actions = (value.medicationIntake ? '<div class="actions">'+button('Record this dose','record-medication','compact','data-medication="'+escape(value.medicationIntake)+'"')+'</div>' : '')+(value.inventory ? '<div class="actions">'+button('Open medical supplies','medical-supplies','compact')+'</div>' : '')+(value.related?.length ? '<div class="actions">'+value.related.map((source,index) =>
     documentTarget({...source, action:index === 0 ? 'Open relevant passage' : source.title})).join('')+'</div>' :
     value.related ? '<div>'+link('Open Documents','guias','compact')+'</div>' : '');
   if (value.sections && !value.urgent) return replySections(value)+actions;
   if (Array.isArray(value.steps) && value.steps.length) {
-    return (value.introduction ? '<p>'+escape(AI.clearTags(value.introduction))+'</p>' : '')+
-      '<ol class="protocol-steps">'+value.steps.map(step => '<li>'+escape(AI.clearTags(step.text))+'</li>').join('')+'</ol>'+
-      sourcesView(value.sources)+actions;
+    const phases = [];
+    value.steps.forEach(step => {
+      if (!phases.length || phases.at(-1).title !== step.phase) phases.push({title:step.phase,items:[]});
+      phases.at(-1).items.push('<li>'+(step.label ? '<strong>'+escape(step.label)+'</strong> ' : '')+escape(AI.clearTags(step.text))+'</li>');
+    });
+    return (value.introduction ? '<p'+(value.urgent ? ' class="notice critical"' : '')+'>'+escape(AI.clearTags(value.introduction))+'</p>' : '')+
+      phases.map(({title,items}) => (title ? '<h4>'+escape(title)+'</h4>' : '')+
+        '<ol class="protocol-steps">'+items.join('')+'</ol>').join('')+
+      sourcesView(value.sources)+actions+handoff;
   }
   return '<p'+(value.urgent ? ' class="notice critical"' : '')+'>'+escape(AI.clearTags(summaryParagraph(value)))+'</p>'+
     sourcesView(value.sources)+actions+
-    (value.handoff ? '<p class="micro emergency-handoff">Report to responders: “'+escape(AI.clearTags(value.handoff))+'”</p>' : '');
+    (value.clinicalProcedure ? paragraphReply(value.clinicalProcedure) : '')+
+    (value.clinicalNote ? '<p class="muted">'+escape(value.clinicalNote)+'</p>' : '')+
+    handoff;
 }
 
 function motorHistory() {
@@ -1376,14 +1387,18 @@ async function checkModel() {
   if (view() === 'settings') render();
   else syncHamPresence();
   let result;
-  try { result = (await AI.modelStatus()).ready ? 'ready' : 'missing'; }
+  try { result = (await AI.modelStatus()).medicalReady ? 'ready' : 'missing'; }
   catch { result = 'offline'; }
   if (session !== currentSession) return;
   model = result;
   if (view() === 'settings') render();
-  else syncHamPresence();
+  else {
+    syncHamPresence();
+    const deep = document.querySelector('.composer button[value="deep"]');
+    if (deep) deep.disabled = busy || Boolean(summaryPending) || !AI.availableModels().deepReady;
+  }
 }
-async function sendMessage(query, mode = 'chat', searchContext = '') {
+async function sendMessage(query, mode = 'chat', searchContext = '', deep = false) {
   if (!session || !query || busy || summaryPending) return;
   stopSpeech();
   const currentSession = session;
@@ -1405,11 +1420,16 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
     (mode !== 'physical' || physicalTab === 'body') : view() === 'bot';
   const resolved = AI.resolvedMessage(query);
   let kind = CI.emergencyKind(query);
-  if (!kind && !resolved && !bodyFollowUp && conversational) {
+  const cpr = conversational ? AI.cprProcedure(query,history,library,environment().name) : null;
+  let interpretation;
+  if (!kind && !resolved && !bodyFollowUp && conversational && !cpr) {
     busy = true;
     hamChatWork = mode;
     if (isVisible()) render();
-    try { kind = await AI.assessSafety(query,safetyHistory).catch(() => ''); }
+    try {
+      kind = await AI.assessSafety(query,safetyHistory,environment().name).catch(() => '');
+      if (!kind) interpretation = await AI.interpretMessage(query,history,environment().name);
+    } catch { interpretation = {unavailable:true}; }
     finally { if (session === currentSession) { busy = false; hamChatWork = ''; } }
     if (session !== currentSession) return;
   }
@@ -1420,8 +1440,10 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
   const urgent = kind || (lowTemperature ? 'temperature' : '');
   let response;
   if (urgent) {
-    const alert = kind ? emergencyAnswer(kind,query) : temperatureAlert(today());
+    const alert = kind ? (['medical','unresponsive'].includes(kind) && cpr) || emergencyAnswer(kind,query) : temperatureAlert(today());
     response = {...alert,content:alert.text,urgent:true,urgentKind:urgent,incidentId:crypto.randomUUID()};
+  } else if (cpr) {
+    response = {...cpr,content:cpr.text};
   } else if (resolved && currentAlert) {
     response = {content:'[[neutral]] Thanks for the update. The emergency alert is still available. You can dismiss it once the immediate concern has been addressed.'};
   } else if (bodyFollowUp) {
@@ -1439,11 +1461,19 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
     response = {content:text};
   } else {
     const review = mode === 'daily' || mode === 'week';
-    const intent = conversational ? AI.chatIntent(query,history) : null;
+    const detected = conversational ? AI.chatIntent(query,history) : null;
+    const intent = interpretation && !interpretation.unavailable ? {
+      ...detected,health:detected.procedure || interpretation.responseMode === 'procedure' || interpretation.route === 'medical',
+      mental:!detected.procedure && interpretation.responseMode !== 'procedure' && interpretation.route === 'mental',
+      current:interpretation.route === 'medical' ? detected.current : '',
+      search:interpretation.search,procedure:detected.procedure || interpretation.responseMode === 'procedure'
+    } : detected;
     const mismatch = scoped ? AI.scopeMismatch(mode,query) : '';
     const emotional = mode === 'mental' || (mode === 'chat' && intent.mental);
     const focus = mode === 'physical' ? 'physical' : mode === 'chat' && intent.current ? 'current' : '';
-    const companionMode = mode === 'chat' && chatMode === 'companion' && !intent.health && !emotional;
+    const preferDeep = deep || mode === 'week' || mode === 'guide' ||
+      Boolean(intent?.health && /\b(?:compare|contrast|compara|comparar)\b/i.test(query));
+    const companionMode = mode === 'chat' && chatMode === 'companion' && !intent.health && !emotional && !preferDeep;
     const present = intent?.current || query;
     const context = focus ? physicalContext(present,intent?.prior) : null;
     let social;
@@ -1452,13 +1482,18 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
     if (isVisible()) render();
     try {
       let result;
-      if (mismatch) {
+      if (interpretation?.unavailable) {
+        if (missionIndexing) await missionIndexing;
+        if (session !== currentSession) return;
+        result = AI.cprProcedure(query,history,library,environment().name) ||
+          {text:'MedGemma could not interpret this message. Check the medical model in Settings and try again.'};
+      } else if (mismatch) {
         result = {text:'We can talk about '+(mode === 'mental' ? 'how you’re feeling emotionally' : 'physical changes')+
           ' here. For that question, open Health → '+(mismatch === 'physical' ? 'Physical' : 'Mental')+'.'};
       } else if (emotional) {
         if (missionIndexing) await missionIndexing;
         if (session !== currentSession) return;
-        result = await AI.mentalSupport(query,history,mentalContext(),library);
+        result = await AI.mentalSupport(query,history,mentalContext(),library,preferDeep);
       } else {
         if (companionMode) {
           social = await AI.companion(query,history,environment().name,firstName());
@@ -1471,8 +1506,8 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
         const data = social && !social.health ? null : context || crewContext(mode,query);
         const hasReviewData = !review || data.checkIns.length > 0;
         const terms = searchContext || (review ? reviewSearch(data) : intent?.search || '');
-        result = social && !social.health && social.text ? {text:social.text} :
-          hasReviewData ? await AI.answer(present,conversational ? history : [],library,data,terms,!!intent?.procedure || (!intent?.search && !focus),focus) : null;
+        result = social && !social.health && social.text ? social :
+          hasReviewData ? await AI.answer(present,conversational ? history : [],library,data,terms,!!intent?.procedure || (!intent?.search && !focus),focus,preferDeep,interpretation) : null;
         if (session !== currentSession) return;
       }
       if (session !== currentSession) return;
@@ -1482,7 +1517,7 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
       response = {content:reply?.text || reply,paragraph:reply?.paragraph,
         introduction:reply?.introduction,steps:reply?.steps,related:reply?.related,inventory:reply?.inventory,medicationIntake:reply?.medicationIntake,
         sections:reply?.sections,sources:reply?.sources,modelTurn:turn.modelTurn,companion:turn.companion,
-        mentalSupport:emotional || undefined};
+        mentalSupport:emotional || undefined,localModel:reply?.localModel,interpreter:reply?.interpreter};
       if ((turn.modelTurn && !emotional) || turn.companion) model = 'ready';
     } catch (error) {
       if (session === currentSession && focus) {
@@ -1523,7 +1558,37 @@ async function sendMessage(query, mode = 'chat', searchContext = '') {
     render();
   } else syncHamPresence();
   if (urgent && view() !== 'bot' && !scoped) showRoute('bot');
-  if (kind && reply) addEmergencyHandoff(query,kind,reply,currentSession);
+  if (kind && reply) {
+    addEmergencyHandoff(query,kind,reply,currentSession);
+    if (!cpr && ['medical','unresponsive'].includes(kind)) void addClinicalProcedure(query,history,reply,currentSession,deep);
+  }
+}
+
+async function addClinicalProcedure(query, history, immediate, owner, deep) {
+  const activeEnvironment = E.environments[immediate.env]?.name || environment().name;
+  const update = changes => {
+    if (session !== owner || !state.conversations.some(turn => turn.incidentId === immediate.incidentId)) return false;
+    const change = turn => turn.incidentId === immediate.incidentId ? {...turn,...changes} : turn;
+    if (!save({...state,conversations:state.conversations.map(change),
+      urgentAlert:state.urgentAlert?.incidentId === immediate.incidentId ? change(state.urgentAlert) : state.urgentAlert})) return false;
+    chat = chat.map(change);
+    if (view() === 'bot' || view() === 'health') render();
+    return true;
+  };
+  try {
+    if (missionIndexing) await missionIndexing;
+    if (session !== owner) return;
+    let result = AI.cprProcedure(query,history,library,activeEnvironment);
+    if (!result) {
+      const plan = await AI.interpretMessage(query,history,activeEnvironment);
+      result = await AI.answer(query,history,library,{activeEnvironment},plan.search,true,'',deep,
+        {...plan,responseMode:'procedure'});
+    }
+    if (result.steps?.length && result.sources?.length) update({clinicalProcedure:result,interpreter:result.interpreter,localModel:result.localModel});
+    else update({clinicalNote:'MedGemma could not verify additional procedure steps in the local references.'});
+  } catch {
+    update({clinicalNote:'The medical model could not complete the procedure review. Follow the immediate guidance above.'});
+  }
 }
 
 function addEmergencyHandoff(report,kind,immediate,owner) {
@@ -1785,8 +1850,10 @@ document.addEventListener('submit',async (event) => {
   if (form.id === 'delete-crew-form') return submitDeleteCrew(form);
   if (form.id === 'check-form') return submitCheck(event);
   if (form.id === 'intake-form') return submitIntake(form.elements.answer?.value || '',false,form.elements.image?.files[0]);
-  if (form.id === 'chat-form') return sendMessage(form.elements.query.value.trim());
-  if (form.id === 'health-chat-form' && ['physical','mental'].includes(form.dataset.area)) return sendMessage(form.elements.query.value.trim(),form.dataset.area);
+  if (form.id === 'chat-form' || form.id === 'health-chat-form' && ['physical','mental'].includes(form.dataset.area)) {
+    const deep = event.submitter?.value === 'deep';
+    return sendMessage(form.elements.query.value.trim(),form.dataset.area || 'chat','',deep);
+  }
   if (form.id === 'guide-form') {
     const topic = form.elements.topic.value.trim();
     if (!topic || busy || draft()?.mode === 'chat') return;
@@ -1864,7 +1931,8 @@ async function start() {
       if (['light','dark'].includes(preferences.theme)) appearance.theme = preferences.theme;
       if (['standard','large','larger'].includes(preferences.text)) appearance.text = preferences.text;
       if (Number.isInteger(preferences.volume) && preferences.volume >= 0 && preferences.volume <= 100) appearance.volume = preferences.volume;
-      if (typeof preferences.animateHam === 'boolean') appearance.animateHam = preferences.animateHam;
+      if (['system','on','off'].includes(preferences.hamMotion)) appearance.hamMotion = preferences.hamMotion;
+      else if (preferences.animateHam === false) appearance.hamMotion = 'off';
     }
     applyAppearance();
     const storedStage = localStorage.getItem(missionStageKey);

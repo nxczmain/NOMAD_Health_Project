@@ -4,17 +4,19 @@
 flowchart LR
     A["NOMAD desktop"] <--> B["Local crew records"]
     A --> C["Markdown retrieval"]
-    C --> M["MedGemma reviews medical passages"]
-    M --> D["Qwen explains supported findings"]
+    C --> M["MedGemma interprets and prepares a cited answer"]
+    M --> D["Qwen simplifies the prepared text"]
     D --> A
     A --> E["Emergency alert"]
 ```
 
 The WinForms host serves a bundled HTML, CSS and JavaScript interface through WebView2. It sends approved model requests to Ollama over loopback. Local storage holds profile metadata and health logs. IndexedDB stores daily photos and the Markdown library. The shared mission stage is saved per installation and applied across sign-ins. Each logged entry keeps its original stage.
 
-For grounded medical questions, NOMAD ranks Markdown passages and asks MedGemma to interpret them. It checks the quoted evidence before giving the supported findings to Qwen, which writes the response with citations. Physical conversations receive relevant symptoms and readings. Mental conversations use mood check-ins and relevant NIMH references. MedGemma also describes manually selected synthetic ultrasound images.
+MedGemma interprets messages, selects the conversation route, plans check-in follow-ups, and prepares replies and summaries. For medical questions it receives relevant Markdown passages, symptoms and readings. Requested procedures use ordered actions with quoted evidence, source references and conditions. Mental conversations use mood check-ins and relevant NIMH references. MedGemma also describes manually selected synthetic ultrasound images.
 
-NOMAD screens check-in and chat replies for emergencies. Recognized warning signs trigger immediate action before any model request. For less direct reports, Qwen uses the recent conversation to assess urgency before the app continues. An urgent assessment stops the routine check-in and displays numbered directions for Earth or the onboard emergency procedure. Qwen can also extract an exact observation for the handoff.
+Qwen receives only the prepared text items for simpler wording. The application retains MedGemma's item order and citations. MedGemma checks changed wording for equivalent meaning, including conditions and uncertainty. Rejected or unavailable simplifications use the original prepared text. The optional larger Qwen model performs the same wording task. Semantic embeddings supplement document search.
+
+NOMAD screens check-in and chat replies for emergencies. Recognized warning signs trigger immediate action before any model request. For less direct reports, MedGemma uses the recent conversation to assess urgency before the app continues. An urgent assessment stops the routine check-in and displays numbered directions for Earth or the onboard emergency procedure. In chat, MedGemma can add verified procedure steps from the library to the original urgent response. MedGemma also extracts an exact observation for the handoff.
 
 The two demo profiles are synthetic. Readings flagged for review in the demo use demonstration reference values. The project has undergone scenario and software checks, and requires clinical validation for operational use.
 
@@ -24,7 +26,7 @@ The two demo profiles are synthetic. Readings flagged for review in the demo use
 | --- | --- |
 | Desktop | C# WinForms, .NET Framework, Microsoft Edge WebView2 |
 | Interface | HTML, CSS, JavaScript |
-| Local models | Ollama with `medgemma1.5:4b` for medical interpretation and synthetic ultrasound, and `qwen3:4b` for explanations and dialogue |
+| Local models | Ollama with `medgemma1.5:4b` for interpretation, drafts and synthetic ultrasound, `qwen3:4b` or `qwen3:8b` for simpler wording, and `qwen3-embedding:0.6b` for search |
 | Local records | WebView2 local storage and IndexedDB |
 | Distribution | Windows PowerShell build and a Windows x64 ZIP |
 

@@ -26,7 +26,7 @@ let trendRange = 7;
 let trendDay = '';
 let recordsFilter = {date:'',env:''};
 let motorDate = '';
-let appearance = {theme:'light',text:'standard',volume:85,animateHam:true};
+let appearance = {theme:'light',text:'standard',volume:85,hamMotion:'system'};
 
 const stageGlyphs = {orbit:'◈',earth:'◉',mars:'⤢',transit:'✧',moon:'☾'};
 const stageOptions = selected => Object.entries(stages).map(([key,label]) =>
@@ -325,6 +325,13 @@ function healthReview(area, fallback, emptyMessage) {
 
 const healthChatTurns = area => (state.conversations || []).filter(turn => turn.mode === area && turn.env === state.env).slice(-12);
 
+function hamReplyButtons() {
+  const disabled = busy || summaryPending ? ' disabled' : '';
+  return '<div class="actions"><button class="button primary"'+disabled+'>Send</button>'+
+    '<button class="button" value="deep"'+(AI.availableModels().deepReady ? disabled : ' disabled')+
+    '>Clearer wording</button></div>';
+}
+
 function healthChat(area) {
   const mental = area === 'mental';
   const history = healthChatTurns(area);
@@ -339,7 +346,7 @@ function healthChat(area) {
     '<form id="health-chat-form" class="composer" data-area="'+area+'">'+
     field('Message',
       '<textarea name="query" rows="2" maxlength="1000" placeholder="'+placeholder+'" required'+(busy ? ' disabled' : '')+'></textarea>')+
-    '<button class="button primary"'+(busy ? ' disabled' : '')+'>Send</button></form>','','wide');
+    hamReplyButtons()+'</form>','','wide');
 }
 
 function generalHealth() {
@@ -758,8 +765,11 @@ function openDocument(data) {
   target?.scrollIntoView({block:'nearest'});
   target?.focus({preventScroll:true});
 }
+let semanticIndexing = false;
+let semanticStatus = '';
+
 function documentsView() {
-  const load = button('Load Markdown folder','choose-markdown','primary',missionIndexing ? 'disabled' : '');
+  const load = button('Load Markdown folder','choose-markdown','primary',missionIndexing || semanticIndexing ? 'disabled' : '');
   const picker = '<input id="markdown-files" type="file" webkitdirectory multiple hidden>';
   if (!library.length) {
     return pageHead('', 'Documents', '')+picker+
@@ -780,30 +790,38 @@ function documentsView() {
     return '<div class="document-row"><div><strong>'+escape(item.title)+'</strong><small>'+escape(snippet)+'</small></div>'+
       button(active === item ? 'Open again' : 'Open','read-markdown','compact','data-id="'+escape(item.id)+'" aria-label="Open '+escape(item.title)+'"')+'</div>';
   }).join('');
+  const semantic = button('Prepare semantic search','index-semantic','','id="index-semantic"'+
+    (missionIndexing || semanticIndexing ? ' disabled' : ''))+
+    '<p id="semantic-status" class="muted" role="status">'+escape(semanticStatus)+'</p>';
   return pageHead('', 'Documents', '',load)+picker+'<div class="workspace-grid document-layout">'+
     card('Local library','<form id="document-search" class="search-form">'+field('Search documents','<input name="query" type="search" value="'+escape(documentQuery)+'" placeholder="Title or content">')+
       '<button class="button compact">Search</button></form><p class="muted" role="status">'+escape(missionImport || matches.length+' of '+library.length+' documents')+'</p>'+
-      (libraryError ? '<p class="error">'+escape(libraryError)+'</p>' : '')+
+      (libraryError ? '<p class="error">'+escape(libraryError)+'</p>' : '')+semantic+
       (results || empty('No matches.')))+
     card(active ? escape(active.title) : 'Reader',active ? '<div id="document-reading" tabindex="-1">'+originalLinks+markdownPreview(active,openedDocument.range)+'</div>' :
       empty('Choose a document to read.'))+'</div>';
 }
 function settingsView() {
-  const status = {unchecked:'Not checked',checking:'Checking…',ready:'Qwen is ready',missing:'Model missing',offline:'Ollama is offline'};
-  const choices = (key,options) => '<select aria-label="'+(key === 'theme' ? 'Theme' : 'Text size')+'" data-preference="'+key+'">'+Object.entries(options).map(([value,label]) =>
+  const status = {unchecked:'Not checked',checking:'Checking…',ready:'MedGemma is ready',missing:'MedGemma is missing',offline:'Ollama is offline'};
+  const models = AI.availableModels();
+  const modelRows = model === 'ready' || model === 'missing' ?
+    '<ul>'+[[AI.model,'Standard wording',models.ready],[AI.deepModel,'Clearer wording',models.deepReady],
+      [AI.embeddingModel,'Semantic search',models.embeddingReady],['qwen3-vl:4b','Simulated ultrasound',models.visionReady]]
+      .map(([tag,label,ready]) => '<li>'+label+' · '+(ready ? 'Ready' : 'Install with <code>ollama pull '+tag+'</code>')+'</li>').join('')+'</ul>' : '';
+  const choices = (key,label,options) => '<select aria-label="'+label+'" data-preference="'+key+'">'+Object.entries(options).map(([value,label]) =>
     '<option value="'+value+'"'+(appearance[key] === value ? ' selected' : '')+'>'+label+'</option>').join('')+'</select>';
   const connectionHelp = ['offline','missing'].includes(model) ?
     '<div class="ham-inline ham-connection">'+UI.ham('ham-small',2,'dormido')+
-    '<div><p>Install and open Ollama. In PowerShell, run these commands.</p><pre><code>ollama pull qwen3:4b\nollama list</code></pre>'+
-    '<p>Confirm that <code>qwen3:4b</code> appears, then leave Ollama running and check the connection.</p></div></div>' : '';
+    '<div><p>Install and open Ollama. In PowerShell, run these commands.</p><pre><code>ollama pull medgemma1.5:4b\nollama pull qwen3:4b\nollama list</code></pre>'+
+    '<p>Confirm that <code>medgemma1.5:4b</code> appears, then leave Ollama running and check the connection.</p></div></div>' : '';
   return pageHead('', 'Settings', '')+'<div class="workspace-grid">'+
-    card('Appearance','<div class="appearance-controls">'+field('Theme',choices('theme',{light:'Light',dark:'Dark'}))+
-      field('Text size',choices('text',{standard:'Standard',large:'Large',larger:'Extra large'}))+'</div>'+
-      '<label class="ham-toggle"><input type="checkbox" data-preference="animateHam"'+(appearance.animateHam ? ' checked' : '')+'> Animate Ham</label>')+
+    card('Appearance','<div class="appearance-controls">'+field('Theme',choices('theme','Theme',{light:'Light',dark:'Dark'}))+
+      field('Text size',choices('text','Text size',{standard:'Standard',large:'Large',larger:'Extra large'}))+
+      field('Ham animation',choices('hamMotion','Ham animation',{system:'Use system setting',on:'On',off:'Off'}))+'</div>')+
     card('Voice &amp; Audio',field('Volume','<input type="range" min="0" max="100" value="'+appearance.volume+'" data-preference="volume">')+
       '<output id="volume-value">'+appearance.volume+'%</output><div class="actions">'+button('Automatic read-aloud','toggle-speech','','aria-pressed="'+readAloud+'"')+'</div>')+
     card('Profile','<p>'+escape(state.profile.name)+'</p><div class="actions">'+button('Edit profile','profile')+button('Sign out','exit-crew')+'</div>')+
-    card('Local assistant','<p role="status">'+status[model]+'</p>'+connectionHelp+button('Check connection','model','','id="check-connection"'+
+    card('Local assistant','<p role="status">'+status[model]+'</p>'+connectionHelp+modelRows+button('Check connection','model','','id="check-connection"'+
       (model === 'checking' || busy ? ' disabled' : '')))+
     card('Medical model','<p>Medical interpretation · '+escape(AI.clinicalModel())+'</p><p>Chat and explanations · '+escape(AI.model)+'</p><form id="clinical-model-form">'+
       field('Installed Ollama model','<input name="modelName" maxlength="160" value="'+escape(AI.clinicalModel())+'" placeholder="Local MedGemma 1.5 model name" required>')+
@@ -817,13 +835,13 @@ function applyAppearance() {
 }
 function saveAppearance(control) {
   const key = control.dataset.preference;
-  const valid = {theme:['light','dark'],text:['standard','large','larger']};
-  const value = key === 'animateHam' ? control.checked : key === 'volume' ? Math.round(Number(control.value)) : control.value;
-  if (key === 'volume' ? !Number.isFinite(value) || value < 0 || value > 100 : key !== 'animateHam' && !valid[key]?.includes(value)) return;
+  const valid = {theme:['light','dark'],text:['standard','large','larger'],hamMotion:['system','on','off']};
+  const value = key === 'volume' ? Math.round(Number(control.value)) : control.value;
+  if (key === 'volume' ? !Number.isFinite(value) || value < 0 || value > 100 : !valid[key]?.includes(value)) return;
   appearance = {...appearance,[key]:value};
   try { localStorage.setItem('netin-appearance-v1',JSON.stringify(appearance)); } catch { notify('Could not save preferences.'); }
   applyAppearance();
-  if (key === 'animateHam') {
+  if (key === 'hamMotion') {
     if (!canAnimateHam()) detachHamVoice();
     syncHamPresence();
   }
@@ -1021,6 +1039,7 @@ function workspaceClick(control) {
   else if (action === 'next-motor') showRoute('motor');
   else if (action === 'next-journal') showRoute('journal');
   else if (action === 'choose-markdown') $('markdown-files').click();
+  else if (action === 'index-semantic') void prepareSemanticSearch();
   else if (action === 'read-markdown') openDocument(control.dataset);
   else if (action === 'clear-records-filter') { recordsFilter = {date:'',env:''}; render(); }
   else if (action === 'clear-motor-date') { motorDate = ''; render(); }
@@ -1095,7 +1114,8 @@ function messageBubble(turn, controls = '', avatar = UI.ham()) {
   const name = turn.role === 'user' ? 'You:' : avatar+' Ham:';
   const body = turn.role === 'assistant' ? paragraphReply(turn) : '<p>'+escape(turn.content)+'</p>';
   return '<article class="message '+turn.role+(turn.urgent ? ' urgent' : '')+'"'+
-    (turn.incidentId ? ' tabindex="-1" data-incident="'+escape(turn.incidentId)+'"' : '')+'><div class="speaker">'+name+'</div>'+body+controls+'</article>';
+    (turn.incidentId ? ' tabindex="-1" data-incident="'+escape(turn.incidentId)+'"' : '')+'><div class="speaker">'+name+
+    (turn.interpreter || turn.localModel ? ' <small class="muted">· '+escape(turn.interpreter || turn.localModel)+'</small>' : '')+'</div>'+body+controls+'</article>';
 }
 
 function assistantView() {
@@ -1130,7 +1150,7 @@ function assistantView() {
     pendingHam(assistantTab)+'</div>'+
     (isCheck ? current && !alert ? intakeComposer(CI.question(current)) : '' : '<form id="chat-form" class="composer">'+field('Message',
       '<textarea name="query" rows="2" maxlength="1000" placeholder="Ask Ham a question or share how you are doing" required '+(busy ? 'disabled' : '')+'></textarea>')+
-      '<button class="button primary" '+(busy ? 'disabled' : '')+'>Send</button></form>')+'</section>';
+      hamReplyButtons()+'</form>')+'</section>';
 }
 
 function loadMarkdown() {
@@ -1138,7 +1158,7 @@ function loadMarkdown() {
 }
 
 function importSelectedMarkdown(files) {
-  if (!files.length || missionIndexing) return;
+  if (!files.length || missionIndexing || semanticIndexing) return;
   return refreshMarkdown(() => AI.replaceMarkdown(files, progress => { missionImport = progress; }));
 }
 
@@ -1146,7 +1166,7 @@ function refreshMarkdown(load) {
   missionImport = 'Preparing the library…';
   libraryError = '';
   missionIndexing = (async () => {
-    try { library = await load(); }
+    try { library = await load(); semanticStatus = ''; }
     catch (error) { libraryError = error.message; }
     finally {
       missionImport = '';
@@ -1156,4 +1176,31 @@ function refreshMarkdown(load) {
   })();
   if (view() === 'guias') render();
   return missionIndexing;
+}
+
+async function prepareSemanticSearch() {
+  if (semanticIndexing || missionIndexing || !library.length) return;
+  const update = message => {
+    semanticStatus = message;
+    const status = $('semantic-status');
+    if (status) status.textContent = message;
+  };
+  semanticIndexing = true;
+  update('Preparing semantic search…');
+  $('index-semantic').disabled = true;
+  document.querySelector('[data-action="choose-markdown"]').disabled = true;
+  try {
+    if (!AI.availableModels().embeddingReady) await checkModel();
+    await AI.buildSemanticIndex(library,(done,total) => update('Indexing '+done+' of '+total+' passages…'));
+    update('Semantic search is ready for this library.');
+  } catch (error) {
+    update(error.message);
+  } finally {
+    semanticIndexing = false;
+    if (view() === 'guias') {
+      const restoreFocus = document.activeElement === document.body || document.activeElement === $('index-semantic');
+      render();
+      if (restoreFocus) $('index-semantic')?.focus();
+    }
+  }
 }

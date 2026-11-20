@@ -214,12 +214,18 @@ internal sealed class MissionWindow : Form
             if (speech == null)
             {
                 speech = new SpeechSynthesizer();
+                VoiceInfo preferredVoice = null;
                 foreach (InstalledVoice voice in speech.GetInstalledVoices())
                 {
                     if (!voice.Enabled || voice.VoiceInfo.Culture.TwoLetterISOLanguageName != "en") continue;
-                    speech.SelectVoice(voice.VoiceInfo.Name);
-                    break;
+                    if (preferredVoice == null) preferredVoice = voice.VoiceInfo;
+                    if (voice.VoiceInfo.Gender == VoiceGender.Male)
+                    {
+                        preferredVoice = voice.VoiceInfo;
+                        break;
+                    }
                 }
+                if (preferredVoice != null) speech.SelectVoice(preferredVoice.Name);
                 speech.SetOutputToDefaultAudioDevice();
                 speech.SpeakStarted += (sender, args) => ReportSpeechEvent(args.Prompt,"start",0);
                 speech.SpeakProgress += (sender, args) => ReportSpeechEvent(args.Prompt,"boundary",args.CharacterPosition);

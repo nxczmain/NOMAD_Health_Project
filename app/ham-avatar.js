@@ -266,7 +266,7 @@
     this._cuadro = 0;
     this._tick = this._tick.bind(this);
     var mq = global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)');
-    this._movReducido = !!(mq && mq.matches);
+    this._movReducido = this.op.movimientoReducido ?? !!(mq && mq.matches);
   }
 
   Ham.prototype.agregarLienzo = function (destino, escala) {

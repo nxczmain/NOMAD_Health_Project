@@ -263,6 +263,7 @@
           /(?:^\s*(?:coughing|coughing up|tosiendo)\b|\b(?:my|our|their|the|a)\s+(?:crew ?mate|friend|colleague|partner|person|patient)\b|\b(?:i|im|we|hes|shes|theyre|he|she|they|companer[oa]|tripulante)\b)/.test(clause)) physical = 'medical';
       const medical = /\b(?:(?:i|he|she|they|we) (?:cant|cannot|can not) breathe|(?:i|he|she|they) (?:am having|is having|are having|have|has) (?:chest pain|trouble breathing)|(?:i|he|she|they) just (?:fainted|passed out)|(?:my|his|her|their) (?:throat is closing|face is drooping)|(?:the |my |his |her |their )?bleeding (?:wont|will not) stop|no puedo respirar|(?<!\bno\s)(?:tengo (?:dolor (?:en el|de) pecho|dificultad para respirar)|me (?:duele el pecho|acabo de desmayar))|se (?:me |le )?cierra la garganta|(?:la )?hemorragia no para)\b/;
       if (medical.test(clause) || /\b(?:me falta el aire|my chest hurts|i (?:can barely breathe|am struggling to breathe|m struggling to breathe)|(?:my|our) crew ?mate (?:[a-z]+ )?(?:cant breathe|cannot breathe|collapsed|just fainted))\b/.test(clause)) physical = 'medical';
+      if (/\b(?:(?:i am|im|he is|hes|she is|shes|they are|(?:a|the|my|our) crew ?mate is) (?:having|suffering) (?:from )?(?:a )?(?:heart attack|cardiac arrest|stroke)|(?:mi companer[oa]|un tripulante) (?:esta teniendo|esta sufriendo) (?:un )?(?:infarto|paro cardiaco))\b/.test(clause)) physical = 'medical';
       if (/\b(?:(?:i|he|she|they) (?:just )?(?:overdosed|took an overdose)|(?:i|he|she|they) think (?:i|he|she|they) (?:am|is|are) having (?:a stroke|a heart attack)|(?:acabo de tomar una sobredosis|creo que estoy sufriendo un derrame))\b/.test(clause)) physical = 'medical';
     }
     return physical || (self && other ? 'self-and-others' : self ? 'self-harm' : other ? 'violence' : '');
@@ -307,7 +308,10 @@
     const steps = [...(earth ? [action] : ['Alert the crew medical officer now.','Activate the onboard emergency procedure now.']),
       'Tell responders the person won’t wake up and whether they are breathing normally.'];
     if (!absent) steps.push('Stay with them and keep checking their breathing.');
-    steps.push('If they are not breathing normally or are only gasping, start CPR according to your training.');
+    const microgravity = env === 'orbit' || env === 'transit';
+    steps.push(microgravity ?
+      'If they are not breathing normally or are only gasping, establish stable support and start mission-trained CPR where they are. Do not wait for transfer.' :
+      'If they are not breathing normally or are only gasping, start CPR according to your training.');
     steps.push(earth ? 'If CPR is needed, use a portable defibrillator as soon as available.' :
       'If CPR is needed, use the defibrillator once the casualty is secured, following the onboard checklist.');
     if (earth && !absent) steps.push('If breathing normally, place them on their side if safe and no suspected head, neck or back injury.');

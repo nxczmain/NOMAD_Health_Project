@@ -275,18 +275,17 @@ test('a medical clarification stays in medical context and does not become ordin
   assert.equal(AI.chatIntent('ok',history).health,true);
 });
 
-test('MedGemma is the default medical interpreter and passes supported findings to Qwen',async()=>{
-  const {AI,calls}=load(body=>body.format?.properties?.ready ? {ready:true} : body.format?.properties?.findings ?
-    {findings:[{ref:1,evidence:'Report the concern to the medical officer.',interpretation:'Medical officer review is supported.'},
-      {ref:99,evidence:'Invented instruction',interpretation:'Unsupported'}],limitations:'No diagnosis established.'} :
+test('MedGemma authors the medical answer and Qwen receives only the authored text',async()=>{
+  const {AI,calls}=load(body=>body.format?.properties?.items ? JSON.parse(body.messages[1].content) :
     {paragraph:'Report the concern to the medical officer.',references:[1]});
   assert.equal(AI.clinicalModel(),'medgemma1.5:4b');
   const result=await AI.answer('What does this medical reference say?',[],[{id:'one',title:'Medical reference',excerpts:[{text:'Report the concern to the medical officer.'}]}],{},'',false);
   assert.equal(calls[0].model,'medgemma1.5:4b');
   assert.equal(calls[1].model,'qwen3:4b');
-  const handoff=JSON.parse(calls[1].messages[1].content).clinicalReview;
-  assert.equal(handoff.findings.length,1);
-  assert.equal(handoff.findings[0].ref,1);
+  const handoff=JSON.parse(calls[1].messages[1].content);
+  assert.deepEqual(Object.keys(handoff),['items']);
+  assert.deepEqual(handoff.items,[{id:0,text:'Report the concern to the medical officer.'}]);
+  assert.equal(result.interpreter,'medgemma1.5:4b');
   assert.equal(result.sources[0].id,'one');
 });
 
@@ -343,6 +342,13 @@ test('selecting an unavailable clinical model leaves the current model selected'
   const ready=load(()=>({ready:true}));
   await ready.AI.setClinicalModel('medgemma-local:4b');
   assert.equal(ready.AI.clinicalModel(),'medgemma-local:4b');
+});
+
+test('Qwen cannot be selected as the clinical interpreter',async()=>{
+  const {AI,calls}=load();
+  await assert.rejects(()=>AI.setClinicalModel('qwen3:4b'),/MedGemma/);
+  assert.equal(AI.clinicalModel(),'medgemma1.5:4b');
+  assert.equal(calls.length,0);
 });
 
 test('developer reporting is available only in an enabled developer build',()=>{

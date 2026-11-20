@@ -10,7 +10,7 @@ Record daily observations, track changes over time, and prepare a handoff for th
 <p align="center">Built for the 2026 NASA Space Apps Challenge · <a href="https://www.spaceappschallenge.org/2026/find-a-team/printnombre_del_equipo/">Team page</a></p>
 
 <p align="center">
-  <a href="https://github.com/nxczmain/NOMAD_Health_Project/releases/latest/download/NETIN-Windows-x64.zip"><strong>Download for Windows x64</strong></a>
+  <a href="https://github.com/nxczmain/NOMAD_Health_Project/raw/refs/heads/main/downloads/NETIN-Windows-x64.zip"><strong>Download for Windows x64</strong></a>
   · <a href="docs/NOMAD-Project-Demonstration.pdf">Project presentation</a>
   · <a href="#installation">Quick start</a>
   · <a href="#judge-walkthrough">Judge walkthrough</a>
@@ -108,7 +108,7 @@ flowchart LR
 
 **Requirements** · Windows 10 22H2 or Windows 11 (x64), Microsoft Edge WebView2 Evergreen Runtime and .NET Framework 4.8 or later. Internet access is needed for the downloads. A camera is optional. See the [full setup guide](docs/INSTALLATION.md#what-you-need) for runtime links and troubleshooting.
 
-1. **Download and extract** [NETIN-Windows-x64.zip](https://github.com/nxczmain/NOMAD_Health_Project/releases/latest/download/NETIN-Windows-x64.zip). In File Explorer, right-click the ZIP and choose **Extract All**. Use a writable folder such as `Documents\NETIN`.
+1. **Download and extract** [NETIN-Windows-x64.zip](https://github.com/nxczmain/NOMAD_Health_Project/raw/refs/heads/main/downloads/NETIN-Windows-x64.zip). In File Explorer, right-click the ZIP and choose **Extract All**. Use a writable folder such as `Documents\NETIN`.
 2. **Set up Ham.** Install and start [Ollama for Windows](https://ollama.com/download/windows). Download both local models and leave Ollama running. Allow about 6 GB for the models.
 
    ```powershell
@@ -126,7 +126,7 @@ flowchart LR
 
 4. **Check the connection.** In **Settings**, select **Check connection** for Qwen. Under **Medical model**, test the default model `medgemma1.5:4b`.
 
-The [installation guide](docs/INSTALLATION.md) covers runtime setup, updates and troubleshooting. The ZIP includes the indexed library. Open **Documents** to browse the bundled references or load a custom Markdown folder. Use [SHA256SUMS.txt](https://github.com/nxczmain/NOMAD_Health_Project/releases/latest/download/SHA256SUMS.txt) to verify the release archive.
+The [installation guide](docs/INSTALLATION.md) covers runtime setup, updates and troubleshooting. The ZIP includes the indexed library. Open **Documents** to browse the bundled references or load a custom Markdown folder. Use [SHA256SUMS.txt](downloads/SHA256SUMS.txt) to verify the archive.
 
 ## Judge walkthrough
 
