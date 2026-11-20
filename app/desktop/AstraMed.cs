@@ -12,7 +12,7 @@ using Microsoft.Web.WebView2.WinForms;
 
 [assembly: AssemblyTitle("NOMAD")]
 [assembly: AssemblyDescription("Astronaut health workstation")]
-[assembly: AssemblyVersion("3.1.1.0")]
+[assembly: AssemblyVersion("3.2.1.0")]
 
 internal static class Program
 {
@@ -52,6 +52,7 @@ internal sealed class MissionWindow : Form
     private readonly WebView2 view;
     private readonly Label status;
     private readonly LocalAi localAi = new LocalAi();
+    private DeveloperReports developerReports;
     private readonly bool resetCrew;
     private SpeechSynthesizer speech;
     private Prompt activeSpeech;
@@ -100,6 +101,7 @@ internal sealed class MissionWindow : Form
             bool portable = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "NETIN-Portable.flag"));
             if (portable)
                 profileFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Profile");
+            developerReports = new DeveloperReports(profileFolder);
             var environment = await CoreWebView2Environment.CreateAsync(null, profileFolder);
             if (IsDisposed) return;
 
@@ -292,6 +294,12 @@ internal sealed class MissionWindow : Form
             await localAi.ReplyAsync(view.CoreWebView2, message.Substring(prefix.Length));
             return;
         }
+        const string reportPrefix = DeveloperReports.Channel + "\n";
+        if (message.StartsWith(reportPrefix, StringComparison.Ordinal))
+        {
+            await developerReports.ReplyAsync(view.CoreWebView2, message.Substring(reportPrefix.Length));
+            return;
+        }
         const string mailPrefix = "nomad-compose-mail\n";
         if (message.StartsWith(mailPrefix, StringComparison.Ordinal))
         {
@@ -335,7 +343,7 @@ internal sealed class MissionWindow : Form
         string filename = message.Substring(0, separator);
         string content = message.Substring(separator + 1);
         bool isReport = System.Text.RegularExpressions.Regex.IsMatch(filename,
-            @"\A(?:(?:nomad|netin)-(?:medical(?:-review)?|weekly|30-day)-\d{4}-\d{2}-\d{2}|nomad-problem-[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})\.html\z");
+            @"\A(?:nomad|netin)-(?:medical(?:-review)?|weekly|30-day)-\d{4}-\d{2}-\d{2}\.html\z");
         bool isImage = filename == "netin-attachment.jpg";
         if (!isReport && !isImage) return;
 

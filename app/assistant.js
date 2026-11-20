@@ -1229,10 +1229,16 @@ globalThis.AstraAssistant = (() => {
     name = String(name || '').trim();
     if (!/^[\w./:-]{1,160}$/.test(name)) throw new Error('Enter a valid installed Ollama model name.');
     if (!/medgemma/i.test(name)) throw new Error('Choose an installed MedGemma model for interpretation. Qwen is used for wording.');
-    const content = await request('chat',{model:name,stream:false,think:false,
-      format:{type:'object',required:['ready'],properties:{ready:{type:'boolean'}}},
-      options:{temperature:0,num_ctx:1024,num_predict:30},messages:[{role:'user',content:'Return {"ready":true} to confirm that this local model is available.'}]});
-    if (JSON.parse(content).ready !== true) throw new Error('The selected model did not complete the readiness check.');
+    let content;
+    try {
+      content = await request('chat',{model:name,stream:false,think:false,keep_alive:'2m',
+        options:{temperature:0,num_ctx:4096,num_predict:48},messages:[{role:'user',content:'Reply with the word READY.'}]});
+    } catch (error) {
+      if (name === 'medgemma1.5:4b' && error.message === 'This model is not available in NOMAD.')
+        throw new Error('This copy of NETIN.exe predates MedGemma support. Close it and open NETIN.exe from the latest NOMAD package.');
+      throw error;
+    }
+    if (typeof content !== 'string' || !content.trim()) throw new Error('The model loaded but did not reply. Try the test again.');
     globalThis.localStorage?.setItem('nomad-clinical-model',name);
     clinicalModel = name;
     return name;

@@ -40,7 +40,7 @@ if ($PSCmdlet.ParameterSetName -eq 'Package') {
 }
 
 New-Item -ItemType Directory -Path $ui -Force | Out-Null
-foreach ($file in @('index.html', 'style.css', 'assistant.js', 'check-in.js', 'crew-camera.js', 'crew-profiles.js', 'engine.js', 'motor.js', 'workspace.js', 'app.js', 'ui.js', 'ham-avatar.js', 'ham-language.js', 'ham-presence.js', 'ultrasound.js', 'care.js', 'care-ui.js', 'medical-catalog.json', 'developer-config.js')) {
+foreach ($file in @('index.html', 'style.css', 'assistant.js', 'check-in.js', 'crew-camera.js', 'crew-profiles.js', 'engine.js', 'motor.js', 'workspace.js', 'app.js', 'ui.js', 'ham-avatar.js', 'ham-language.js', 'ham-presence.js', 'ultrasound.js', 'care.js', 'care-ui.js', 'medical-catalog.json')) {
     Copy-Item -LiteralPath (Join-Path $project $file) -Destination $ui
 }
 $fonts = Join-Path $ui 'assets'
@@ -97,6 +97,7 @@ $compilerArgs = @(
     "/reference:$(Join-Path $output 'Microsoft.Web.WebView2.WinForms.dll')"
     (Join-Path $PSScriptRoot 'AstraMed.cs')
     (Join-Path $PSScriptRoot 'LocalAi.cs')
+    (Join-Path $PSScriptRoot 'DeveloperReports.cs')
 )
 & $compiler @compilerArgs
 if ($LASTEXITCODE -ne 0) { throw 'NETIN.exe could not be compiled.' }

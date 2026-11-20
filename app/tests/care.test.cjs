@@ -23,7 +23,8 @@ function load(respond) {
       calls.push(body);
       queueMicrotask(()=>{
         const result = respond?.(body);
-        receive({data:{channel:'astra-ai',id,result:result && JSON.stringify(result),error:result ? undefined : 'Offline'}});
+        const error = result instanceof Error ? result.message : result ? undefined : 'Offline';
+        receive({data:{channel:'astra-ai',id,result:!error && JSON.stringify(result),error}});
       });
     }}}});
   for(const name of ['engine.js','ham-language.js','check-in.js','care.js','assistant.js']) {
@@ -351,14 +352,41 @@ test('Qwen cannot be selected as the clinical interpreter',async()=>{
   assert.equal(calls.length,0);
 });
 
-test('developer reporting is available only in an enabled developer build',()=>{
+test('the MedGemma test identifies an obsolete desktop bridge',async()=>{
+  const {AI}=load(()=>new Error('This model is not available in NOMAD.'));
+  await assert.rejects(()=>AI.setClinicalModel('medgemma1.5:4b'),/NETIN\.exe predates MedGemma support/);
+});
+
+test('only Developer can open the issue popup, which captures the view before opening',async()=>{
   const {context}=load();workspace(context);
-  vm.runInContext(`let opened=0; const field=()=>'';const openModal=()=>{opened++;};`,context);
+  vm.runInContext(`
+    const events=[];
+    const field=(_label,control)=>control, view=()=>'settings';
+    const form={dataset:{},elements:{title:{focus(){}}}};
+    const img={};
+    const dialog={open:false,querySelector:key=>key==='img'?img:form,showModal(){ this.open=true; events.push('open'); }};
+    const $=()=>dialog;
+    const nativeResponse = {capture:'cGxhdHNob3Q=',save:'NOMAD-Developer-Reports.html'};
+    const requests=[];
+    chrome.webview={
+      addEventListener(_,listener){ this.listener=listener; },
+      removeEventListener(){ this.listener=null; },
+      postMessage(raw){
+        const request = JSON.parse(raw.slice('nomad-developer-report\\n'.length));
+        events.push(request.operation);
+        requests.push(request);
+        this.listener({data:{channel:'nomad-developer-report',operation:request.operation,id:request.id,result:nativeResponse[request.operation]}});
+      }
+    };
+  `,context);
   vm.runInContext(source('care-ui.js'),context);
-  vm.runInContext('problemModal()',context);
-  assert.equal(vm.runInContext('opened',context),0);
-  vm.runInContext('NOMAD_DEVELOPER=true;problemModal()',context);
-  assert.equal(vm.runInContext('opened',context),1);
+  await vm.runInContext('problemModal()',context);
+  assert.equal(vm.runInContext('requests.length',context),0);
+  await vm.runInContext('state.profile.role="Developer";problemModal()',context);
+  assert.deepEqual(plain(vm.runInContext('events',context)),['capture','open']);
+  assert.equal(vm.runInContext('img.src',context),'data:image/jpeg;base64,cGxhdHNob3Q=');
+  assert.equal(vm.runInContext('form.dataset.route',context),'settings');
+  assert.match(vm.runInContext('dialog.innerHTML',context),/Feature request/);
 });
 
 test('medical report export keeps the reviewed snapshot, source pages and unfinished interview when the model is offline',async()=>{

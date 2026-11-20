@@ -153,16 +153,72 @@ function saveCareReport() {
 }
 
 function developerMode() {
-  return globalThis.NOMAD_DEVELOPER === true;
+  return !!session && state.profile.role === 'Developer';
 }
 
-function problemModal() {
-  if (!developerMode()) return;
-  openModal('Report an application problem','<form id="problem-report-form">'+field('Problem','<input name="title" maxlength="160" required>')+
-    field('Steps to reproduce','<textarea name="steps" maxlength="3000" required></textarea>')+
-    field('Expected result','<textarea name="expected" maxlength="1500" required></textarea>')+
-    field('Observed result','<textarea name="actual" maxlength="1500" required></textarea>')+
-    '<button class="button primary">Save developer report</button></form>');
+function developerReportRequest(operation, id, fields = {}) {
+  const bridge = globalThis.chrome?.webview;
+  if (!bridge) return Promise.reject(new Error('Open the NOMAD desktop app to save developer reports.'));
+  return new Promise((resolve,reject) => {
+    const cleanup = () => {
+      clearTimeout(timer);
+      bridge.removeEventListener('message',receive);
+    };
+    const receive = ({data}) => {
+      if (data?.channel !== 'nomad-developer-report' || data.id !== id || data.operation !== operation) return;
+      cleanup();
+      if (data.error) reject(new Error(data.error));
+      else resolve(data.result);
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('NOMAD did not respond. Reopen the latest NETIN.exe and try again.'));
+    },10000);
+    bridge.addEventListener('message',receive);
+    try { bridge.postMessage('nomad-developer-report\n'+JSON.stringify({...fields,operation,id})); }
+    catch (error) { cleanup(); reject(error); }
+  });
+}
+
+let capturingProblem = false;
+async function problemModal() {
+  if (!developerMode() || capturingProblem || $('problem-dialog').open) return;
+  const owner = session;
+  const id = crypto.randomUUID();
+  const route = view();
+  capturingProblem = true;
+  try {
+    const image = await developerReportRequest('capture',id);
+    if (session !== owner || !developerMode()) return;
+    const dialog = $('problem-dialog');
+    dialog.innerHTML = '<header><h2 id="problem-dialog-title">Report an issue</h2>'+
+      button('Close','close-problem-report')+'</header><form id="problem-report-form">'+
+      '<figure class="report-attachment"><figcaption>Screenshot of NOMAD</figcaption>'+
+      '<img class="report-preview" alt="NOMAD when Report issue was selected"></figure>'+
+      field('Category','<select name="category"><option>Bug</option><option>Feature request</option><option>Other</option></select>')+
+      field('Title','<input name="title" maxlength="160" required>')+
+      field('What happened or what should change?','<textarea name="details" maxlength="3000" required></textarea>')+
+      '<details><summary>Reproduction details (optional)</summary>'+
+      field('Steps to reproduce','<textarea name="steps" maxlength="3000"></textarea>')+
+      field('Expected result','<textarea name="expected" maxlength="1500"></textarea>')+'</details>'+
+      '<p class="micro">This report and screenshot are added to the local developer reports file.</p>'+
+      '<p class="error" role="alert"></p><button type="submit" class="button primary">Save report</button></form>';
+    dialog.querySelector('img').src = 'data:image/jpeg;base64,'+image;
+    const form = dialog.querySelector('form');
+    Object.assign(form.dataset,{id,route});
+    dialog.showModal();
+    form.elements.title.focus();
+  } catch (error) {
+    if (session === owner) notify(error.message);
+  } finally {
+    capturingProblem = false;
+  }
+}
+
+async function openDeveloperReports() {
+  const owner = session;
+  try { await developerReportRequest('open',crypto.randomUUID()); }
+  catch (error) { if (session === owner) notify(error.message); }
 }
 
 async function submitCareForm(form) {
@@ -178,18 +234,33 @@ async function submitCareForm(form) {
   } else if (form.id === 'clinical-model-form') {
     const owner = session;
     const submit = form.querySelector('button[type="submit"],button');
+    const errorLine = form.querySelector('.error');
+    if (submit.disabled) return;
+    errorLine.textContent = '';
+    const label = submit.textContent;
     submit.disabled = true;
+    submit.textContent = 'Testing…';
     try {
       await AI.setClinicalModel(form.elements.modelName.value);
       if (session === owner) { render(); notify('Medical model is ready.'); }
-    } catch (error) { if (form.isConnected) form.querySelector('.error').textContent = error.message; }
-    finally { submit.disabled = false; }
+    } catch (error) { if (form.isConnected) errorLine.textContent = error.message; }
+    finally { submit.disabled = false; submit.textContent = label; }
   } else if (form.id === 'problem-report-form' && developerMode()) {
-    const report = {id:crypto.randomUUID(),createdAt:new Date().toISOString(),route:view(),environment:state.env,...Object.fromEntries(new FormData(form))};
-    if (save({...state,problemReports:[report,...(state.problemReports || [])]})) {
-      globalThis.chrome?.webview?.postMessage('nomad-problem-'+report.id+'.html\n<!doctype html><meta charset="utf-8"><title>NOMAD developer report</title><pre>'+escape(JSON.stringify(report,null,2))+'</pre>');
-      $('modal').close();
-      notify('Developer report saved locally.');
-    }
+    const owner = session;
+    const submit = form.querySelector('[type="submit"]');
+    if (submit.disabled) return;
+    const report = {...Object.fromEntries(new FormData(form)),route:form.dataset.route};
+    const errorLine = form.querySelector('.error');
+    errorLine.textContent = '';
+    submit.disabled = true;
+    try {
+      const file = await developerReportRequest('save',form.dataset.id,report);
+      if (session === owner) {
+        if (form.isConnected) $('problem-dialog').close();
+        notify('Report added to '+file+'.');
+      }
+    } catch (error) {
+      if (form.isConnected) errorLine.textContent = error.message;
+    } finally { submit.disabled = false; }
   }
 }

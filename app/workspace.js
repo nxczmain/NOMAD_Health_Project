@@ -827,7 +827,8 @@ function settingsView() {
       field('Installed Ollama model','<input name="modelName" maxlength="160" value="'+escape(AI.clinicalModel())+'" placeholder="Local MedGemma 1.5 model name" required>')+
       '<p class="error" role="alert"></p><button class="button primary"'+(busy ? ' disabled' : '')+'>Test and use model</button></form>'+
       '<p><a href="https://ollama.com/library/medgemma1.5:4b">MedGemma 1.5 for Ollama</a></p>')+
-    (developerMode() ? card('Developer tools',button('Report an application problem','report-problem')) : '')+'</div>';
+    (developerMode() ? card('Developer tools', '<div class="actions">'+button('Report issue','report-problem')+
+      button('Open reports folder','open-developer-reports')+'</div>') : '')+'</div>';
 }
 function applyAppearance() {
   document.documentElement.dataset.theme = appearance.theme;

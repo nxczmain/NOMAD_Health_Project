@@ -1218,7 +1218,8 @@ function render() {
   $('sidebar').hidden = !workspace;
   const brandLogo = '<img class="brand-logo" src="assets/'+(appearance.theme === 'dark' ? 'nomad-logo-dark.png' : 'nomad-logo-light.png')+'" alt="NOMAD">';
   $('brand').innerHTML = workspace ? '' : brandLogo;
-  $('mast-stage').innerHTML = workspace ? stageBadge(state.env) : '';
+  $('mast-stage').innerHTML = workspace ? stageBadge(state.env)+
+    (developerMode() ? button('Report issue','report-problem','compact') : '') : '';
   if (workspace) {
     const active = {motor:'health',journal:'panel',check:'bot',semana:'records',camera:'panel'}[route] || route;
     const icons = {panel:'home',bot:'bot',health:'health',records:'records',medications:'bag',guias:'guias',settings:'settings'};
@@ -1246,7 +1247,9 @@ function render() {
 
 function openModal(title, body) {
   const modal = $('modal');
-  modal.innerHTML = '<header class="section-head"><h2 id="modal-title">'+title+'</h2>'+button('Close','close')+'</header>'+body;
+  const report = developerMode() ? button('Report issue','report-problem','compact') : '';
+  modal.innerHTML = '<header class="section-head"><h2 id="modal-title">'+title+'</h2><div class="dialog-actions">'+
+    report+button('Close','close')+'</div></header>'+body;
   modal.setAttribute('aria-labelledby','modal-title');
   modal.showModal();
 }
@@ -1263,7 +1266,7 @@ function profileModal(create = false) {
   const profile = create ? {role:'Mission specialist'} : state.profile;
   const fields = keys => keys.map(([key,label]) =>
     field(label,'<input name="'+key+'" maxlength="'+(key === 'name' || key === 'role' ? '80' : '350')+'" value="'+escape(profile[key])+'" '+(['name','role'].includes(key) ? 'required' : '')+'>')).join('');
-  const roles = ['Commander','Pilot','Mission specialist','Flight engineer','Crew medical officer','Payload specialist','Research scientist','Crew member'];
+  const roles = ['Commander','Pilot','Mission specialist','Flight engineer','Crew medical officer','Payload specialist','Research scientist','Crew member','Developer'];
   const customRole = !!profile.role && !roles.includes(profile.role);
   const identity = fields([['name','Name']])+field('Role or rank','<select name="role" aria-label="Role or rank" required>'+roles.map(role=>
     '<option value="'+escape(role)+'"'+(role === profile.role ? ' selected' : '')+'>'+escape(role)+'</option>').join('')+
@@ -1698,6 +1701,8 @@ document.addEventListener('click',(event) => {
     return globalThis.chrome.webview.postMessage('nomad-compose-mail\n'+control.href);
   }
   if (action === 'report-problem' && developerMode()) return problemModal();
+  if (action === 'close-problem-report') return $('problem-dialog').close();
+  if (action === 'open-developer-reports' && developerMode()) return void openDeveloperReports();
   if (action === 'edit-medical-supply' || action === 'remove-medical-supply') {
     const item = MissionCare.supplies(state).find(entry => entry.id === control.dataset.id);
     if (!item) return;
@@ -1825,6 +1830,12 @@ document.addEventListener('change',(event) => {
   if (control.form?.id === 'check-form' && E.steps[draft()?.index]?.key === 'impact') {
     control.form.querySelector('.error').textContent = control.value === 'urgent' ? E.medicalHelp : '';
   }
+});
+$('problem-dialog').addEventListener('close',() => {
+  const dialog = $('problem-dialog');
+  const id = dialog.querySelector('form')?.dataset.id;
+  dialog.replaceChildren();
+  if (id) void developerReportRequest('discard',id).catch(() => {});
 });
 document.addEventListener('submit',async (event) => {
   event.preventDefault();

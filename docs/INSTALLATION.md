@@ -40,12 +40,19 @@ For an installation that uses a custom Ollama port or separate model folder, run
 - In **Health → Physical → Ultrasound simulation**, choose a file from `Ultrasound Samples` and confirm it is synthetic before analyzing it.
 - Use **Health → Medical Supplies** to record confirmed stock and **Medications** to review recorded doses.
 
+## Developer issue reports
+
+1. In **Settings → Profile → Edit profile**, choose **Developer** under **Role or rank** and save the profile. You can also select the role when creating a profile.
+2. Select **Report issue** while the problem is visible. The popup shows a screenshot of the NOMAD view at the time you clicked the button. Add a category, title and description, then select **Save report**.
+3. Use **Settings → Developer tools → Open reports folder** to find **NOMAD-Developer-Reports.html**. Every report and its screenshot go into this one file, under **Profile\DeveloperReports** in a portable installation. Review the screenshots before sharing the file.
+
 ## Troubleshooting
 
 | Symptom | What to check |
 | --- | --- |
 | Windows cannot open NOMAD | Extract the whole ZIP and confirm the WebView2 and .NET runtimes are installed. |
 | Qwen or MedGemma is missing | Start Ollama, run `ollama list` against the same local port as NOMAD and pull the missing model. |
+| The MedGemma test reports that the executable predates MedGemma support | Close NOMAD and open the `NETIN.exe` inside the latest extracted ZIP. Update any shortcut that points to an older copy. |
 | The app shows an older library or UI | Close and reopen the updated `NETIN.exe` from the extraction folder. Confirm that `interface\knowledge\index.json` is present. |
 | The medical model cannot respond | Close other model workloads if memory is tight, then retry. Source-backed text can fall back to Qwen when the interpreter is unavailable. |
 

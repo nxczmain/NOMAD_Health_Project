@@ -50,7 +50,7 @@ internal sealed class LocalAi : IDisposable
         }
         catch (HttpRequestException)
         {
-            error = "Ollama is unavailable. Open Ollama and try again.";
+            error = "NOMAD could not reach Ollama at " + baseUrl + ". Start Ollama on that port and try again.";
         }
         catch (TaskCanceledException)
         {
@@ -133,8 +133,11 @@ internal sealed class LocalAi : IDisposable
         using (HttpResponseMessage response = await client.PostAsync(baseUrl + endpoint, content))
         {
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
-                throw new InvalidOperationException("Install the local model with: ollama pull " + expectedModel);
-            response.EnsureSuccessStatusCode();
+                throw new InvalidOperationException("Ollama at " + baseUrl + " does not have " + expectedModel +
+                    ". Run ollama pull " + expectedModel + " against that Ollama instance.");
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidOperationException("Ollama at " + baseUrl + " could not run " + expectedModel +
+                    " (HTTP " + (int)response.StatusCode + "). Check the Ollama logs and try again.");
             return json.Deserialize<Dictionary<string, object>>(await response.Content.ReadAsStringAsync());
         }
     }
