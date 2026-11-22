@@ -98,24 +98,19 @@ flowchart LR
 | --- | --- |
 | **Home** | Follow the daily routine for a photo, check-in, motor tests and journal. Review the latest indicators and follow-ups. |
 | **Health → Physical** | Log a symptom on the body map, ask Ham about a physical change or upload a synthetic ultrasound image for training. |
-| **Health → Mental** | Record how you feel and talk with Ham about mood, its effect on duties and ways to get support. |
+| **Health → Mental** | Record how you feel and talk with Ham about mood and ways to get support. |
 | **Health → General** | Chart heart rate, blood pressure, temperature, blood glucose, sleep duration and mood. |
 | **Records** | Review previous observations by date and mission stage. Export a daily report from the current filter. |
 | **Assistant** | Chat with Ham, complete an adaptive daily check-in or practice a crew emergency handoff using a simulated report. |
-| **Documents** | Browse the starter references or import the complete research collection as Markdown. |
+| **Exercise** | Review offline movement demonstrations and record the assigned routine, completed sessions and energy. |
+| **Documents** | Browse the bundled research in Markdown, open the full historical ISS medical checklist, or import a custom folder. |
 
 ## Installation
 
-**Requirements** · Windows 10 22H2 or Windows 11 (x64), Microsoft Edge WebView2 Evergreen Runtime and .NET Framework 4.8 or later. Internet access is needed for the downloads. A camera is optional. See the [full setup guide](docs/INSTALLATION.md#what-you-need) for runtime links and troubleshooting.
+**Requirements** · Windows 10 22H2 or Windows 11 (x64), Microsoft Edge WebView2 Evergreen Runtime and .NET Framework 4.8 or later. Internet access is needed for the downloads. A camera is optional. See the [full setup guide](docs/INSTALLATION.md#first-installation) for runtime links and troubleshooting.
 
 1. **Download and extract** [NETIN-Windows-x64.zip](https://github.com/nxczmain/NOMAD_Health_Project/raw/refs/heads/main/downloads/NETIN-Windows-x64.zip). In File Explorer, right-click the ZIP and choose **Extract All**. Use a writable folder such as `Documents\NETIN`.
-2. **Set up Ham.** Install and start [Ollama for Windows](https://ollama.com/download/windows). Download both local models and leave Ollama running. Allow about 6 GB for the models.
-
-   ```powershell
-   ollama pull qwen3:4b
-   ollama pull medgemma1.5:4b
-   ollama list
-   ```
+2. **Start Ollama.** Install and open [Ollama for Windows](https://ollama.com/download/windows). Allow about 6 GB of space for the local models.
 
 3. **Open `NETIN.exe`** from the extracted folder. Keep `interface` and the WebView2 DLLs beside the executable. Choose a mission stage and sign in with a demo profile.
 
@@ -124,7 +119,7 @@ flowchart LR
    | Earth Orbit | Maya Chen | `OrbitDemo26` |
    | Moon | Mateo Ruiz | `LunarDemo26` |
 
-4. **Check the connection.** In **Settings**, select **Check connection** for Qwen. Under **Medical model**, test the default model `medgemma1.5:4b`.
+4. **Set up Ham.** In **Settings → Local assistant**, select **Check connection** and use **Download required models** if MedGemma or Qwen is missing. Under **Medical model**, select **Test and use model**.
 
 The [installation guide](docs/INSTALLATION.md) covers runtime setup, updates and troubleshooting. The ZIP includes the indexed library. Open **Documents** to browse the bundled references or load a custom Markdown folder. Use [SHA256SUMS.txt](downloads/SHA256SUMS.txt) to verify the archive.
 
@@ -175,8 +170,8 @@ node --test app/tests/*.test.cjs
 | [`downloads/`](downloads/) | Windows x64 ZIP and [SHA-256 checksum](downloads/SHA256SUMS.txt) |
 | [`references/`](references/) | Five starter references for the demo |
 | [`portable/`](portable/) | Scripts for running and updating a USB installation |
-| [`Investigation (.md)/`](Investigation%20%28.md%29/) | 554 indexed references and the original conversion manifest |
-| [`investigation/`](investigation/) | 510 original PDFs, including figures and tables |
+| [`Investigation (.md)/`](Investigation%20%28.md%29/) | 569 indexed references and the original conversion manifest |
+| [`investigation/`](investigation/) | Original PDFs, including figures and tables |
 
 The research collection covers in-flight medical conditions, mission risks, first aid and standards. The library guide maps the topics and links to the source files. [Research library](docs/RESEARCH.md) · [NASA data and references](docs/NASA-DATA.md)
 

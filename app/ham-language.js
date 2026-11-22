@@ -20,7 +20,8 @@ globalThis.HamLanguage = (() => {
     [/\b(?:stalbe|stabel)\b/gi,'stable'],
     [/\b(?:dizy|dizzi|dizzzy)\b/gi,'dizzy'],
     [/\bhead[\t -]+ache\b/gi,'headache'],
-    [/\b(?:ibuprofrn|ibuprofin|ibuprophen|ibuprofeno)\b/gi,'ibuprofen'],
+    [/\b(?:diharrea|diahrea|diarhea|diarrhoea)\b/gi,'diarrhea'],
+    [/\b(?:ibuprofrn|ibuprofin|ibuprophen|ibuoprofen|ibuprofeno)\b/gi,'ibuprofen'],
     [/\bnauseus\b/gi,'nauseous'],
     [/\bradiaton\b/gi,'radiation'],
     [/\bmejo[r]{2,}\b/gi,'mejor']

@@ -130,7 +130,7 @@ test('keeps symptom follow-ups for new concerns and preserves previously recorde
 
 test('check-in uses the selected follow-up key but keeps NOMAD’s authored question', async () => {
   const fake = load(() => ({key:'symptomDetail',covered:[],question:'I am Dr. Lina Torres. What was your pulse?'}));
-  const current = replyToCheckIn(makeCheckIn(),'I have pain in my wrist.');
+  const current = replyToCheckIn(makeCheckIn(),'I have pain in my wrist, 4/10.');
   const plan = await fake.AI.checkInQuestion(CI.questions(current).filter(CI.isAdaptiveQuestion),current,'Earth');
   assert.equal(plan.next.key,'symptomDetail');
   assert.equal(CI.question({...current,next:plan.next}).prompt,CI.symptomQuestions.pain);

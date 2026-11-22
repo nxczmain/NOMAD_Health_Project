@@ -8,10 +8,11 @@ const NetinMotor = (() => {
   const games = {
     dock:{name:'Docking drill',description:'Tap the panda when it appears. After five signals, follow it across eight targets.',metrics:[['reaction','Reaction time','ms'],['aiming','Target time','ms'],['accuracy','Target accuracy','%']]},
     cargo:{name:'Cargo transfer',description:'Guide four turtles to the highlighted ponds. Keep the pointer held until you reach each pond.',metrics:[['movement','Transfer time','ms'],['accuracy','Drop accuracy','%']]},
-    taps:{name:'Thruster taps',description:'Use one hand to follow the fox across the left and right panels. Complete 16 alternating taps.',metrics:[['cadence','Time between taps','ms'],['accuracy','Tap accuracy','%']]}
+    search:{name:'Visual search',description:'Find the fox among the other animals and select it. Its position changes across 12 boards.',metrics:[['searchTime','Search time','ms'],['accuracy','Accuracy','%']]},
+    taps:{name:'Thruster taps',metrics:[['cadence','Time between taps','ms'],['accuracy','Tap accuracy','%']]}
   };
   const gameOf = result => result.game || 'dock';
-  const goals = {dock:targetPath.length,cargo:4,taps:16};
+  const goals = {dock:targetPath.length,cargo:4,search:12,taps:16};
   const median = values => {
     const sorted = [...values].sort((a,b) => a - b);
     const middle = Math.floor(sorted.length / 2);
@@ -257,42 +258,58 @@ const NetinMotor = (() => {
     return cancel;
   }
 
-  function taps(board,status,finish,stop) {
+  function visualSearch(board,status,finish,stop) {
     const controller = new AbortController();
     const {signal} = controller;
     const layout = layoutOf(board);
-    const panels = [...board.children];
+    const cells = [...board.children];
+    const symbols = ['panda','turtle','fox'].map(name=>UI.animal(name));
     const times = [];
-    let count = 0;
     let misses = 0;
-    let lastTap;
+    let target = -1;
+    let started;
+    let frame;
+    let timer;
     let input;
-    const cancel = () => controller.abort();
-    function illuminate() {
-      panels.forEach((panel,index) => panel.classList.toggle('active',index === count % 2));
-      status.textContent = count+' of '+goals.taps+' · Tap '+(count % 2 ? 'right' : 'left')+'.';
+    const cancel = () => { controller.abort(); cancelAnimationFrame(frame); clearTimeout(timer); };
+    function nextBoard() {
+      const previous = target;
+      target = Math.floor(Math.random() * (cells.length - Number(previous >= 0)));
+      if (previous >= 0 && target >= previous) target++;
+      cells.forEach((cell,index) => {
+        const symbol = index === target ? 2 : Math.floor(Math.random() * 2);
+        cell.innerHTML = symbols[symbol];
+      });
+      status.textContent = 'Board '+(times.length+1)+' of '+goals.search+' · Find the fox.';
+      started = undefined;
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => {
+          if (signal.aborted) return;
+          started = performance.now();
+          timer = setTimeout(() => { cancel(); stop('The response window expired. Start again when ready.'); },15000);
+        });
+      });
     }
     board.addEventListener('pointerdown',event => {
-      if (!primaryPointer(event) || (input && input !== event.pointerType)) return;
+      if (started === undefined || !primaryPointer(event) || (input && input !== event.pointerType)) return;
       event.preventDefault();
       input = event.pointerType;
-      if (event.target.closest('.motor-pad') !== panels[count % 2]) {
+      if (event.target.closest('.motor-search-cell') !== cells[target]) {
         misses++;
+        status.textContent = 'Board '+(times.length+1)+' of '+goals.search+' · Keep looking for the fox. Misses: '+misses+'.';
         return;
       }
-      const now = performance.now();
-      if (lastTap != null) times.push(now - lastTap);
-      lastTap = now;
-      count++;
-      if (count < goals.taps) return illuminate();
+      clearTimeout(timer);
+      times.push(performance.now() - started);
+      if (times.length < goals.search) return nextBoard();
       cancel();
-      finish({cadence:median(times),misses,input,layout});
+      finish({searchTime:median(times),misses,input,layout,scene:'animals-v1'});
     },{signal});
     watchFocus(signal,message => { cancel(); stop(message); });
-    illuminate();
+    nextBoard();
     return cancel;
   }
 
   return {inputs,hands,games,gameOf,value,accuracy,baseline,demoHistory,drill,watchFocus,
-    play:{dock:drill,cargo,taps}};
+    play:{dock:drill,cargo,search:visualSearch}};
 })();

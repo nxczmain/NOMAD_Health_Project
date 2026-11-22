@@ -126,13 +126,18 @@ globalThis.AstraAssistant = (() => {
   async function replaceMarkdown(files, progress) {
     const selected = files.filter(file => markdownFile(file.name));
     if (!selected.length) throw new Error('The folder contains no Markdown files.');
+    const bundled = (await documents('readonly',store => store.getAll())).filter(item => item.revision !== 'manual');
+    const bundledIds = new Set(bundled.map(item => item.id));
     const entries = [];
     for (const file of selected) {
       progress('Reading '+(entries.length+1)+' of '+selected.length+' documents…');
-      entries.push(markdownEntry(file.webkitRelativePath || file.name,await file.text(),null,'manual'));
+      const relative = file.webkitRelativePath?.split('/').slice(1).join('/') || file.name;
+      const entry = markdownEntry(relative,await file.text(),null,'manual');
+      if (!bundledIds.has(entry.id)) entries.push(entry);
     }
-    await replaceDocuments(entries);
-    return entries;
+    const combined = [...bundled,...entries];
+    await replaceDocuments(combined);
+    return combined;
   }
 
   async function loadMarkdown(progress) {
@@ -153,7 +158,9 @@ globalThis.AstraAssistant = (() => {
         files.some(item => typeof item.path !== 'string' || !markdownFile(item.path) || !/^[\da-f]{64}$/i.test(item.hash))) {
       throw new Error('The Markdown index has invalid entries.');
     }
-    if (cached.length === files.length && cached.every(item => item.revision === revision)) return cached;
+    const manual = cached.filter(item => item.revision === 'manual');
+    const filePaths = new Set(files.map(item => item.path));
+    if (cached.length - manual.length === files.length && cached.every(item => item.revision === revision || item.revision === 'manual')) return cached;
     const entries = [];
     for (const item of files) {
       progress('Reading '+(entries.length+1)+' of '+files.length+' documents…');
@@ -164,8 +171,9 @@ globalThis.AstraAssistant = (() => {
       if (hash !== item.hash.toLowerCase()) throw new Error('The document changed during import: '+item.path+'.');
       entries.push(markdownEntry(item.path,new TextDecoder().decode(bytes),hash,revision));
     }
-    await replaceDocuments(entries);
-    return entries;
+    const combined = [...entries,...manual.filter(item => !filePaths.has(item.relative))];
+    await replaceDocuments(combined);
+    return combined;
   }
 
   async function reflect(task, data) {
@@ -633,6 +641,35 @@ globalThis.AstraAssistant = (() => {
     return original;
   }
 
+  function quickCare(message, library = [], environment) {
+    if (NetinCheckIn.emergencyKind(message) || NetinCheckIn.trainingScenario(message)) return null;
+    const report = language.fold(message).trim();
+    const intake = globalThis.MissionCare?.routineMedicationReport(message);
+    if (intake) {
+      const text = intake.directed ? 'What did your doctor recommend taking '+intake.generic+' for? Follow their instructions and log the dose once you take it.' :
+        intake.planned ? 'What are you planning to take '+intake.generic+' for? Confirm it is approved for you in the onboard medication plan or with the crew medical officer.' :
+        'How much '+intake.generic+' did you take, and when? Have you noticed any unwanted effects?';
+      return {text,paragraph:text,sources:[],medicationIntake:intake.planned ? undefined : intake.name};
+    }
+    const diarrhea = /^(?:(?:i (?:am|feel)|im) (?:feeling |filling )?(?:well|fine|good|okay|all right),?\s+(?:(?:but|just|with)\s+)?|(?:i (?:have|am having)|im having|tengo)\s+)(?:(?:just|a little bit of|a bit of|a little|some|mild|un poco de)\s+)*(?:diarrh(?:ea|oea)|diarrea)(?:[,.]?\s*(?:what (?:should|can|do) i do|que hago)\??)?[.! ]*$/.test(report);
+    if (diarrhea) {
+      const text = 'Replace lost fluids and electrolytes using approved supplies if you can drink. Tell the crew medical officer promptly if there’s blood in your stool, severe pain, frequent vomiting, or signs of dehydration. When did it start, and can you keep fluids down?';
+      const guide = library.find(entry => /gastroenteritis.*acute[- ]diarrhea/i.test(entry.title));
+      const passage = guide?.excerpts.find(entry => /prevention and management of dehydration/i.test(entry.text));
+      return {text,paragraph:text,sources:[
+        ...(passage ? [{ref:1,id:guide.id,title:guide.title,url:guide.url,...passage}] : []),
+        {ref:2,title:'NIDDK · Treating diarrhea',url:'https://www.niddk.nih.gov/health-information/digestive-diseases/diarrhea/treatment'},
+        {ref:3,title:'NIDDK · Diarrhea and warning signs',url:'https://www.niddk.nih.gov/health-information/digestive-diseases/diarrhea/symptoms-causes'}
+      ]};
+    }
+    if (/^(?:i am bleeding|im bleeding|estoy sangrando|me sale sangre)(?:[,.]?\s*(?:what (?:should|do) i do|que hago)\??)?[.! ]*$/.test(report)) {
+      const help = /^earth$/i.test(environment || '') ? 'Call local emergency services' : 'Alert the crew medical officer';
+      const text = 'Where is the bleeding, and is it heavy or spurting? If it’s from a cut, press firmly with a clean dressing. '+help+' now if it is heavy, won’t stop, or you feel faint.';
+      return {text,paragraph:text,sources:[{ref:1,title:'American Red Cross · External bleeding',url:'https://www.redcross.org/take-a-class/resources/learn-first-aid/bleeding-life-threatening-external'}]};
+    }
+    return null;
+  }
+
   async function answer(question, history, library, crewContext, searchContext = '', expand = true, scope = '', preferDeep = false, plan) {
     question = language.interpret(question);
     const priorProcedure = procedureContext(question,history);
@@ -665,8 +702,8 @@ globalThis.AstraAssistant = (() => {
         return {text,paragraph:text,introduction,steps,sources:reply.sources};
       }
     }
-    const intake = globalThis.MissionCare?.routineMedicationReport(question);
-    if (intake) return {text:'How much '+intake.generic+' did you take, and when? Have you noticed any unwanted effects?',sources:[],medicationIntake:intake.name};
+    const immediate = quickCare(question,library,crewContext?.activeEnvironment);
+    if (immediate) return immediate;
     if (/^(?:my nose is bleeding|i have (?:a )?(?:mild )?nosebleed)[.! ]*$/i.test(question)) {
       const earth = /^earth$/i.test(crewContext?.activeEnvironment || '');
       const text = (earth ? 'Sit and lean forward. Pinch the soft part of your nose continuously for 10 to 15 minutes.' :
@@ -985,7 +1022,7 @@ globalThis.AstraAssistant = (() => {
       return previous.urgentKind;
     }
     const normalized = language.fold(message).trim();
-    if (globalThis.MissionCare?.routineMedicationReport(message) ||
+    if (quickCare(message) || /^(?:my head hurts|(?:physically[, ]+)?(?:i (?:have|feel)|im having) (?:just )?(?:a )?(?:little |mild )?headache|me duele la cabeza)[.! ]*$/.test(normalized) ||
         /^(?:i have (?:a )?(?:little (?:bit of )?|mild )swelling|my nose is bleeding|i have (?:a )?(?:mild )?nosebleed)[.! ]*$/.test(normalized)) return '';
     const onlyWaitingForReply = /^(?:my |the )?(?:crew ?mate|partner|colleague|friend|he|she|they) (?:has not|hasnt|have not|havent|did not|didnt) (?:answered|replied to|responded to) (?:my |a |the )?(?:text|message|email)(?: yet)?[.!?]*$/;
     if (!previous?.urgentKind && (NetinCheckIn.routineResponse(message) || onlyWaitingForReply.test(normalized))) return '';
@@ -1012,6 +1049,7 @@ globalThis.AstraAssistant = (() => {
     const quoted = reports.find(report => report.toLowerCase().includes(evidence.trim().toLowerCase()) &&
       !/\b(?:i (?:do not|dont|never) (?:want|plan) to (?:hurt|harm|kill|cut)|(?:im|i am) not (?:suicidal|thinking of hurting)|no (?:quiero|pienso) (?:hacerme dano|suicidarme)|used to (?:think about|want to)|the phrase|grammar example|yesterday i (?:said|thought)|i (?:said|thought) yesterday)\b/.test(language.fold(report)));
     if (!quoted || ['violence','self-and-others'].includes(kind)) return '';
+    if (kind === 'unresponsive' && !/\b(?:unresponsive|unconscious|passed out|wont wake|wont respond|not (?:responding|reacting|waking)|(?:cannot|cant) (?:be woken|wake)|inconsciente|no (?:despierta|reacciona|responde))\b/.test(language.fold(quoted))) return '';
     if (kind === 'self-harm') {
       const firstPersonRisk = /\b(?:(?:i(?: am|m) (?:feeling )?suicidal|i (?:feel suicidal|have suicidal thoughts|have a plan to (?:die|end my life|kill myself))|(?:afraid|worried) (?:that )?i (?:may|might|will) (?:hurt|harm|kill|cut) myself|(?:i|im|i am) (?:ready to|considering) (?:suicide|end(?:ing)? my life|hurt(?:ing)? myself))|me preocupa (?:que pueda )?(?:lastimarme|hacerme dano|suicidarme)|tengo (?:ideas|pensamientos) suicidas)\b/;
       if (!firstPersonRisk.test(language.fold(quoted))) return '';
@@ -1245,8 +1283,9 @@ globalThis.AstraAssistant = (() => {
   }
 
   return { model, clinicalModel:() => clinicalModel, setClinicalModel, deepModel, embeddingModel, modelStatus, availableModels: () => availableModels,
+    pullModel:name => request('pull',{model:name},2710000),
     titles, summary, loadMarkdown, replaceMarkdown, buildSemanticIndex, reflect,
     findPassages: (query,history,library,terms,environment) => retrieve(query,history,library,terms,environment,false).slice(0,3),
-    clearTags, resolvedMessage, readUltrasound, answer, cprProcedure, missionContext, interpretMessage, assessSafety, emergencyHandoff, checkInQuestion,
+    clearTags, resolvedMessage, readUltrasound, answer, quickCare, cprProcedure, missionContext, interpretMessage, assessSafety, emergencyHandoff, checkInQuestion,
     chatIntent, healthTopic, scopeMismatch, physicalFallback, mentalSupport, companion };
 })();

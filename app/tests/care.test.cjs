@@ -357,6 +357,86 @@ test('the MedGemma test identifies an obsolete desktop bridge',async()=>{
   await assert.rejects(()=>AI.setClinicalModel('medgemma1.5:4b'),/NETIN\.exe predates MedGemma support/);
 });
 
+test('the reported ordinary headache and planned ibuprofen do not open an unrelated emergency',async()=>{
+  const {AI,CI,Care,calls}=load(()=>({kind:'unresponsive',evidence:'My headache started gradually'}));
+  await Care.loadCatalog();
+  assert.equal(await AI.assessSafety('my head hurts',[]),'');
+  assert.equal(await AI.assessSafety('I am going to take an ibuprofen',[]),'');
+  assert.equal(await AI.assessSafety('my doctor told me to take an aspirin',[]),'');
+  assert.match(AI.quickCare('my doctor told me to take an aspirin').text,/What did your doctor recommend/);
+  assert.equal(calls.length,0);
+  assert.equal(await AI.assessSafety('My headache started gradually',[]),'');
+  assert.equal((await AI.answer('I am going to take an ibuprofen',[],[],{})).medicationIntake,undefined);
+  assert.match(AI.quickCare('I am going to take an ibuprofen').text,/What are you planning to take/);
+  assert.equal(await AI.assessSafety('I am going to take an ibuprofen but I cannot breathe.',[]),'medical');
+  assert.equal(CI.emergencyKind('My chest hurts'),'medical');
+  assert.match(CI.emergencyReply('medical','My chest hurts','orbit').text,/chest pain/);
+  assert.equal(CI.emergencyKind('I have a sudden severe headache'),'medical');
+});
+
+test('the reported diarrhea question retains the symptom and uses the relevant library source',async()=>{
+  const {AI,CI}=load();
+  const report='I am filling well, just a little bit of diharrea, what should I do?';
+  const reference='NASA IMM - All Documentation Per Condition/Gastrointestinal Conditions/CliFF 119/gastroenteritis-acute-diarrhea-cliff-2023.md';
+  const source=AI.markdownEntry(reference,fs.readFileSync(path.join(root,'..','Investigation (.md)',reference),'utf8'),'test','test');
+  const reply=await AI.answer(report,[],[source],{activeEnvironment:'Deep Space'});
+  assert.match(reply.text,/fluids and electrolytes/i);
+  assert.equal(reply.sources[0].id,source.id);
+  const original={answers:{urgent:'no'},values:{},turns:[],personal:{}};
+  const prompt=CI.question(original);
+  const update=CI.apply(original,prompt,report,false);
+  assert.equal(update.clarificationFor,prompt.key);
+  assert.match(update.answers.symptoms,/diharrea/);
+  assert.equal(update.turns[1].content,report);
+  assert.equal(CI.statusUpdate('I feel alright'),'well');
+  assert.equal(CI.statusUpdate('I told you I was feeling alright'),'well');
+});
+
+test('bleeding without a location asks about the actual bleed',()=>{
+  const {AI}=load();
+  const reply=AI.quickCare('I am bleeding, what should I do?',[],'Earth Orbit');
+  assert.match(reply.text,/Where is the bleeding/);
+  assert.match(reply.sources[0].url,/redcross.org/);
+});
+
+test('a reported broken rib creates a torso record beside the existing headache',()=>{
+  const {Care}=load();
+  const turn={id:'rib',mode:'chat',date:'2026-11-20'};
+  const previous=[{id:'head',env:'orbit',region:'head',side:'front',date:'2026-11-20',symptom:'pain'}];
+  const body=Care.captureBody({env:'orbit',body:previous},'I broke my rib',turn,'My head hurts');
+  assert.deepEqual(plain(body.map(item=>[item.region,item.symptom])),[['torso','injury'],['head','pain']]);
+});
+
+test('a daily headache check-in offers a pain slider and updates the same body entry',()=>{
+  const {CI,Care}=load();
+  const state={env:'orbit',body:[]};
+  let check=CI.create('orbit','2026-11-20',null);
+  check=CI.apply(check,CI.question(check),'no',false);
+  check=CI.apply(check,CI.question(check),'Physically I feel just a little headache',false);
+  const initial=Care.checkInBody(state,check);
+  const prompt=CI.question({...initial.draft,next:{key:'onset'}});
+  assert.equal(prompt.key,'painIntensity');
+  assert.equal(prompt.range,true);
+  check=CI.apply(initial.draft,prompt,'4',false);
+  const rated=Care.checkInBody({...state,body:initial.body},check);
+  assert.equal(rated.body.length,1);
+  assert.equal(rated.body[0].id,initial.body[0].id);
+  assert.equal(rated.body[0].intensity,4);
+  assert.match(CI.recap(check,[]).text,/Headache reported/);
+});
+
+test('a homesick response receives support and does not trigger a duty questionnaire',()=>{
+  const {CI}=load();
+  let check={answers:{urgent:'no',symptoms:'',sleep:7,glucose:'',mood:6},values:{sleep:7,mood:6},turns:[]};
+  const prompt=CI.question(check);
+  assert.equal(prompt.key,'context-mood');
+  assert.doesNotMatch(prompt.prompt,/duties|work/);
+  check=CI.apply(check,prompt,"I miss my family, that's all",false);
+  assert.match(check.turns.at(-1).content,/Missing your family can be hard/);
+  assert.equal(CI.question(check).key,'note');
+  assert.equal(CI.describeObservation("I feel fine, I just think I haven't slept well"),'Poor sleep reported');
+});
+
 test('only Developer can open the issue popup, which captures the view before opening',async()=>{
   const {context}=load();workspace(context);
   vm.runInContext(`

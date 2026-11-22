@@ -40,7 +40,7 @@ if ($PSCmdlet.ParameterSetName -eq 'Package') {
 }
 
 New-Item -ItemType Directory -Path $ui -Force | Out-Null
-foreach ($file in @('index.html', 'style.css', 'assistant.js', 'check-in.js', 'crew-camera.js', 'crew-profiles.js', 'engine.js', 'motor.js', 'workspace.js', 'app.js', 'ui.js', 'ham-avatar.js', 'ham-language.js', 'ham-presence.js', 'ultrasound.js', 'care.js', 'care-ui.js', 'medical-catalog.json')) {
+foreach ($file in @('index.html', 'style.css', 'assistant.js', 'check-in.js', 'crew-camera.js', 'crew-profiles.js', 'engine.js', 'motor.js', 'workspace.js', 'app.js', 'ui.js', 'ham-avatar.js', 'ham-language.js', 'ham-presence.js', 'ultrasound.js', 'care.js', 'care-ui.js', 'exercise.js', 'medical-catalog.json')) {
     Copy-Item -LiteralPath (Join-Path $project $file) -Destination $ui
 }
 $fonts = Join-Path $ui 'assets'

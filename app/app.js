@@ -10,7 +10,7 @@ const rosterKey = 'netin-roster-v1';
 const deletedCrewKey = 'netin-deleted-crew-v1';
 const missionStageKey = 'netin-mission-stage-v1';
 const isCrewKey = key => typeof key === 'string' && /^netin-crew:[\da-f-]{36}$/.test(key);
-const routes = [['panel','Home'],['bot','Assistant'],['health','Health'],['records','Records']];
+const routes = [['panel','Home'],['bot','Assistant'],['health','Health'],['exercise','Exercise'],['records','Records']];
 const utilityRoutes = [['medications','Medications'],['guias','Documents'],['settings','Settings']];
 const subRoutes = ['check','motor','journal','semana'];
 const formatDay = (key) => new Date(key + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
@@ -72,7 +72,8 @@ function readCrew(key) {
     const motorLogs = previous.motorLogs ?? (CrewProfiles.isDemo(key) ? Motor.demoHistory(previous.records) : []);
     const drafts = Object.fromEntries(Object.entries(previous.drafts || {}).map(([env,entry]) =>
       [env,entry?.mode === 'chat' ? CI.restore(entry) : entry]));
-    return {...previous, profile, motorLogs, drafts, transitions: previous.transitions || []};
+    return {...previous, profile, motorLogs, drafts, body:globalThis.MissionCare?.correctBodyRegions(previous.body) || previous.body,
+      transitions: previous.transitions || []};
   }
   if (!previous && CrewProfiles.isDemo(key)) return CrewProfiles.demoState(key);
   if (!previous && key === legacyCrew) return {...demo};
@@ -112,7 +113,8 @@ const freeChatTurns = () => (state.conversations || []).filter(turn =>
 function setDraft(next) {
   const previous = state.drafts[state.env];
   const archive = previous?.mode === 'chat' && previous.date !== next.date ? intakeTurns(previous,true) : [];
-  return save({...state,drafts:{...state.drafts,[state.env]:next},
+  const update = next.mode === 'chat' && globalThis.MissionCare ? MissionCare.checkInBody(state,next) : {draft:next,body:state.body};
+  return save({...state,body:update.body,drafts:{...state.drafts,[state.env]:update.draft},
     conversations:archive.length ? [...(state.conversations || []),...archive] : state.conversations});
 }
 function pageHead(label, title, text, action = '') {
@@ -144,7 +146,7 @@ function home() {
 function cameraView() {
   const {error,pendingPhoto,destination,working} = cameraScreen;
   return pageHead('', 'Daily photo',escape(state.profile.name)+' · '+formatDay(E.dateKey()))+
-    '<section class="work-sheet photo-capture">'+(pendingPhoto ? '<div class="camera-frame"><img src="'+validPhoto(pendingPhoto)+'" alt="Photo preview"></div>' :
+    '<section class="work-sheet photo-capture">'+(pendingPhoto ? '<div class="camera-frame"><img class="camera-capture-preview" src="'+validPhoto(pendingPhoto)+'" alt="Photo preview"></div>' :
       error ? '' : '<div class="camera-frame"><video id="photo-video" autoplay muted playsinline aria-label="Camera preview"></video>'+
       '<span class="camera-guide" aria-hidden="true"></span><span id="camera-count" class="camera-count" hidden aria-hidden="true"></span></div>')+
     '<div class="ham-inline photo-ham">'+UI.ham('ham-small',2,'camera')+'<p id="photo-status" role="status">'+
@@ -767,7 +769,21 @@ function intakeSummary(entry, urgent) {
 
 function intakeTranscript(current, prompt) {
   return current.turns.map(turn => messageBubble(turn)).join('')+
-    (prompt ? messageBubble({role:'assistant',content:prompt.prompt},'',UI.ham('ham-large',4,'check')) : '');
+    (prompt && !current.clarificationFor ? messageBubble({role:'assistant',content:prompt.prompt},'',UI.ham('ham-small',4,'check')) : '');
+}
+
+function painRange(name, disabled) {
+  return '<div class="pain-range">'+field('Pain intensity','<input name="'+name+
+    '" type="range" min="0" max="10" step="1" value="5" data-pain-rating'+disabled+'>')+
+    '<div class="range-scale"><small>0 · No pain</small><output>5 / 10</output><small>10 · Strongest pain</small></div></div>';
+}
+
+function pendingPainForm(turns, mode) {
+  const pending = turns.at(-1)?.bodyFollowUp;
+  if (pending?.field !== 'intensity') return '';
+  return '<form id="chat-pain-form" class="pain-card" data-mode="'+mode+'" data-record="'+escape(pending.id)+'">'+
+    painRange('rating',busy || summaryPending ? ' disabled' : '')+
+    '<button class="button primary compact"'+(busy || summaryPending ? ' disabled' : '')+'>Save pain rating</button></form>';
 }
 
 function intakeComposer(prompt) {
@@ -777,13 +793,14 @@ function intakeComposer(prompt) {
   const options = prompt.options ? '<div class="actions intake-options">'+Object.entries(prompt.options).map(([key,label]) =>
     button(label,'intake-option','','data-answer="'+key+'"'+disabled)).join('')+'</div>' : '';
   const acceptsText = !prompt.options || prompt.freeText;
-  const answer = acceptsText ?
+  const answer = prompt.range ? painRange('answer',disabled) : acceptsText ?
     field(prompt.metric ? metricNames[prompt.metric.key]+' ('+prompt.metric.unit+')' : 'Your answer',prompt.metric ? '<input name="answer" inputmode="'+(prompt.metric.key === 'pressure' ? 'text' : 'decimal')+'" autocomplete="off" maxlength="60" value="'+escape(existing)+'"'+disabled+'>' :
       '<textarea name="answer" rows="2" maxlength="'+(prompt.key === 'note' ? 1500 : 700)+'"'+disabled+'>'+escape(prompt.options ? '' : existing)+'</textarea>') : '';
   const measure = prompt.metric ? '<div class="measure-question">'+UI.icon(prompt.metric.key)+'<strong>'+metricNames[prompt.metric.key]+'</strong></div>' : '';
-  return '<form id="intake-form" class="intake-form intake-card">'+measure+options+answer+(prompt.key === 'note' ?
+  const pending = draft().clarificationFor ? '<p class="micro">Current check-in question · '+escape(prompt.prompt)+'</p>' : '';
+  return '<form id="intake-form" class="intake-form intake-card">'+pending+measure+options+answer+(prompt.key === 'note' ?
     field('Photo (optional)','<input name="image" type="file" accept="image/jpeg,image/png,image/webp"'+disabled+'>')+preview(draft().image) : '')+
-    '<div class="actions">'+(acceptsText ? '<button class="button primary"'+disabled+'>Send</button>' : '')+
+    '<div class="actions">'+(acceptsText ? '<button class="button primary"'+disabled+'>'+(prompt.range ? 'Save pain rating' : 'Send')+'</button>' : '')+
     (prompt.key === 'symptoms' ? button('Nothing to report','intake-option','','data-answer="none"'+disabled) : '')+
     (prompt.optional ? button('Skip','skip-intake','',disabled) : '')+'</div><p class="error" role="alert"></p></form>';
 }
@@ -798,7 +815,7 @@ function speakIntake() {
 
 async function prepareIntakeQuestion(current, openAssistant = false) {
   const available = CI.questions(current);
-  const adaptive = available.filter(CI.isAdaptiveQuestion);
+  const adaptive = available[0]?.range ? [] : available.filter(CI.isAdaptiveQuestion);
   const activeSession = session;
   const needsModel = adaptive.length && !current.next && !['offline','missing'].includes(model);
   if (needsModel) { busy = true; hamChatWork = 'check'; }
@@ -857,7 +874,7 @@ async function submitIntake(value, skip = false, file) {
   try {
     let kind = skip ? '' : CI.emergencyKind(value);
     const freeResponse = !prompt.options || prompt.freeText && !Object.hasOwn(prompt.options,value.trim());
-    if (!kind && !skip && value.trim() && freeResponse &&
+    if (!kind && !skip && value.trim() && freeResponse && !prompt.range &&
         !(prompt.metric && /^[\d\s.,/°]+(?:c|bpm|mm\s*hg|mg\s*\/\s*dl|h|hrs?|hours?)?$/i.test(value))) {
       busy = true;
       hamChatWork = 'check';
@@ -899,7 +916,8 @@ async function submitIntake(value, skip = false, file) {
     if (view() === 'bot') { render(); presentHam(next.turns.at(-1)); }
     return;
   }
-  return prepareIntakeQuestion(next);
+  if (next.turns.at(-1)?.role === 'assistant' && view() === 'bot') presentHam(next.turns.at(-1));
+  return prepareIntakeQuestion(draft());
 }
 
 function finishIntake(current = draft()) {
@@ -923,7 +941,7 @@ function finishIntake(current = draft()) {
   const dailyFlow = current.date === E.dateKey() ?
     {...flow(),date:current.date,check:urgent ? 'urgent' : hasData ? 'done' : 'pending'} : state.dailyFlow;
   const owner = session;
-  const body = !urgent && current.answers.symptoms && globalThis.MissionCare ?
+  const body = !urgent && !current.bodyTurnId && current.answers.symptoms && globalThis.MissionCare ?
     MissionCare.captureBody({...state,env:current.env},current.answers.symptoms,{mode:'check',date:current.date,id:crypto.randomUUID()}) : state.body;
   const update = {...state,drafts,dailyFlow,body,
     checkBeforeAlert:urgent ? flow().check : state.checkBeforeAlert,
@@ -949,7 +967,8 @@ function finishIntake(current = draft()) {
 function details(entry, includeControls = true) {
   const impact = E.steps[0].options[entry.values.impact];
   return '<dl><dt>Physical condition</dt><dd>'+escape(impact || 'Not recorded')+'</dd><dt>Mood and mission duties</dt><dd>'+escape(E.dutyImpact[entry.values.moodImpact] || 'Not recorded')+'</dd><dt>Environment notes</dt><dd>'+escape(entry.values.context || 'None')+
-    '</dd><dt>Observations</dt><dd>'+escape(entry.values.note || 'None')+'</dd>'+(entry.details || []).map(item => '<dt>'+escape(item.title)+'</dt><dd>'+escape(item.answer)+'</dd>').join('')+
+    '</dd><dt>Observations</dt><dd>'+escape(entry.values.note ? CI.describeObservation(entry.values.note) : 'None')+
+    '</dd>'+(entry.details || []).map(item => '<dt>'+escape(item.title)+'</dt><dd>'+escape(CI.describeObservation(item.answer,item.title))+'</dd>').join('')+
     '<dt>Crew medical review</dt><dd>'+(entry.review ? 'Marked locally' : 'Not marked')+'</dd></dl>'+preview(entry.image)+
     (includeControls && entry.image?.src ? button('Save photo','save-image','','data-day="'+entry.date+'"') : '');
 }
@@ -1049,7 +1068,7 @@ function paragraphReply(value) {
 }
 
 function motorHistory() {
-  return state.motorLogs ?? [];
+  return (state.motorLogs || []).filter(item => simulation() || !item.sample);
 }
 
 function motorTable(days, env = state.env) {
@@ -1071,7 +1090,7 @@ function motorSummary(result) {
   const measurements = Motor.games[game].metrics;
   const skill = {dock:'This test records visual reaction and hand–eye coordination.',
     cargo:'This test records controlled pointer movement and placement accuracy.',
-    taps:'This test records the timing and accuracy of alternating taps.'}[game];
+    search:'This task measures visual search speed and selection accuracy.'}[game];
   return '<p class="micro">'+E.environments[result.env].name+' · '+Motor.hands[result.hand]+' · '+Motor.inputs[result.input]+'</p>'+
     '<dl class="motor-readings">'+measurements.map(([key,label,unit]) =>
     '<div><dt>'+label+'</dt><dd>'+Motor.value(result,key)+' <small>'+unit+'</small></dd>'+
@@ -1085,14 +1104,14 @@ function motorView() {
   const game = Motor.games[motorGame];
   const saved = motorHistory().find(day => day.date === E.dateKey() && day.env === state.env && Motor.gameOf(day) === motorGame);
   const result = motorResult || saved;
-  const animal = {dock:'panda',cargo:'turtle',taps:'fox'}[motorGame];
+  const animal = {dock:'panda',cargo:'turtle',search:'fox'}[motorGame];
   const sprite = UI.animal(animal);
-  const grid = motorGame === 'taps' ? '<span class="motor-pad">'+sprite+'Left</span><span class="motor-pad">'+sprite+'Right</span>' :
+  const grid = motorGame === 'search' ? Array.from({length:20},() => '<span class="motor-search-cell" aria-hidden="true"></span>').join('') :
     Array.from({length:15},() => '<span class="'+(motorGame === 'dock' ? 'motor-beacon' : 'motor-bay')+'" aria-hidden="true">'+sprite+'</span>').join('');
   return pageHead(environment().name,'Motor skills','Practice reaction, hand–eye coordination and finger control.')+
     workflow()+'<div class="actions flow-actions">'+button(flow().motor ? 'Continue to journal' : 'Skip today’s test','next-journal',flow().motor ? 'primary' : '',motorRound ? 'disabled' : '')+'</div>'+
-    '<div class="actions motor-select" role="group" aria-label="Select a motor game">'+Object.entries(Motor.games).map(([key,item]) =>
-      button(item.name,'motor-game',key === motorGame ? 'primary' : '',
+    '<div class="actions motor-select" role="group" aria-label="Select a motor game">'+Object.keys(Motor.play).map(key =>
+      button(Motor.games[key].name,'motor-game',key === motorGame ? 'primary' : '',
         'data-game="'+key+'" aria-pressed="'+(key === motorGame)+'"'+(motorRound ? ' disabled' : ''))).join('')+'</div>'+
     '<div class="work-grid"><section class="work-sheet"><h2>'+game.name+'</h2>'+
     '<div class="ham-inline ham-motor">'+UI.ham('ham-small',2,'motor')+
@@ -1204,6 +1223,7 @@ function reportView() {
 
 function render() {
   const route = view();
+  $('developer-report-launcher').hidden = !developerMode();
   const routeChanged = route !== renderedRoute;
   renderedRoute = route;
   if (route === 'motor' && motorRound?.board?.isConnected) return syncHamPresence();
@@ -1218,11 +1238,10 @@ function render() {
   $('sidebar').hidden = !workspace;
   const brandLogo = '<img class="brand-logo" src="assets/'+(appearance.theme === 'dark' ? 'nomad-logo-dark.png' : 'nomad-logo-light.png')+'" alt="NOMAD">';
   $('brand').innerHTML = workspace ? '' : brandLogo;
-  $('mast-stage').innerHTML = workspace ? stageBadge(state.env)+
-    (developerMode() ? button('Report issue','report-problem','compact') : '') : '';
+  $('mast-stage').innerHTML = workspace ? stageBadge(state.env) : '';
   if (workspace) {
     const active = {motor:'health',journal:'panel',check:'bot',semana:'records',camera:'panel'}[route] || route;
-    const icons = {panel:'home',bot:'bot',health:'health',records:'records',medications:'bag',guias:'guias',settings:'settings'};
+    const icons = {panel:'home',bot:'bot',health:'health',exercise:'dumbbell',records:'records',medications:'bag',guias:'guias',settings:'settings'};
     const navigation = items => items.map(([key,label]) => '<a href="#'+key+'" title="'+label+'"'+(key === active ? ' aria-current="page"' : '')+'>'+UI.icon(icons[key])+'<span>'+label+'</span></a>').join('');
     $('sidebar-brand').innerHTML = brandLogo;
     $('sidebar-crew').innerHTML = portrait(state.profile.name,validPhoto(crewPortrait))+'<div><strong>'+escape(state.profile.name)+
@@ -1235,7 +1254,8 @@ function render() {
   }
   $('main').innerHTML = (storageError ? '<p class="notice">The local log could not be read. Restart NOMAD if the problem persists.</p>' : '')+
     ({home,camera:cameraView,panel:workspaceHome,check:checkView,motor:motorView,bot:assistantView,semana:reportView,guias:documentsView,
-      health:healthView,records:recordsView,medications:medicationHistory,settings:settingsView,journal:journalView})[route]();
+      health:healthView,exercise:exerciseView,records:recordsView,medications:medicationHistory,settings:settingsView,journal:journalView})[route]();
+  if (route === 'exercise') animateExerciseGuides();
   attachHam(undefined,true);
   greetWithHam(route);
   if (route === 'motor' && routeChanged) speakMotorGuide();
@@ -1424,8 +1444,9 @@ async function sendMessage(query, mode = 'chat', searchContext = '', deep = fals
   const resolved = AI.resolvedMessage(query);
   let kind = CI.emergencyKind(query);
   const cpr = conversational ? AI.cprProcedure(query,history,library,environment().name) : null;
+  const immediate = !kind && !cpr && conversational && mode !== 'mental' ? AI.quickCare?.(query,library,environment().name) : null;
   let interpretation;
-  if (!kind && !resolved && !bodyFollowUp && conversational && !cpr) {
+  if (!kind && !resolved && !bodyFollowUp && conversational && !cpr && !immediate) {
     busy = true;
     hamChatWork = mode;
     if (isVisible()) render();
@@ -1449,6 +1470,8 @@ async function sendMessage(query, mode = 'chat', searchContext = '', deep = fals
     response = {...cpr,content:cpr.text};
   } else if (resolved && currentAlert) {
     response = {content:'[[neutral]] Thanks for the update. The emergency alert is still available. You can dismiss it once the immediate concern has been addressed.'};
+  } else if (immediate) {
+    response = {...immediate,content:immediate.text};
   } else if (bodyFollowUp) {
     response = {content:bodyFollowUp.text,bodyFollowUp:bodyFollowUp.bodyFollowUp};
   } else if (globalThis.MissionCare?.bodyQuestion(state,query,turn)) {
@@ -1485,12 +1508,7 @@ async function sendMessage(query, mode = 'chat', searchContext = '', deep = fals
     if (isVisible()) render();
     try {
       let result;
-      if (interpretation?.unavailable) {
-        if (missionIndexing) await missionIndexing;
-        if (session !== currentSession) return;
-        result = AI.cprProcedure(query,history,library,environment().name) ||
-          {text:'MedGemma could not interpret this message. Check the medical model in Settings and try again.'};
-      } else if (mismatch) {
+      if (mismatch) {
         result = {text:'We can talk about '+(mode === 'mental' ? 'how you’re feeling emotionally' : 'physical changes')+
           ' here. For that question, open Health → '+(mismatch === 'physical' ? 'Physical' : 'Mental')+'.'};
       } else if (emotional) {
@@ -1703,6 +1721,18 @@ document.addEventListener('click',(event) => {
   if (action === 'report-problem' && developerMode()) return problemModal();
   if (action === 'close-problem-report') return $('problem-dialog').close();
   if (action === 'open-developer-reports' && developerMode()) return void openDeveloperReports();
+  if (action === 'download-local-models') return void downloadRequiredModels();
+  if (action === 'exercise-motion') {
+    exerciseMotion = !exercisePlays();
+    render();
+    return document.querySelector('[data-action="exercise-motion"]')?.focus();
+  }
+  if (action === 'open-exercise-references') {
+    event.preventDefault();
+    documentTopic = 'exercise';
+    documentQuery = '';
+    return showRoute('guias');
+  }
   if (action === 'edit-medical-supply' || action === 'remove-medical-supply') {
     const item = MissionCare.supplies(state).find(entry => entry.id === control.dataset.id);
     if (!item) return;
@@ -1711,7 +1741,7 @@ document.addEventListener('click',(event) => {
     return;
   }
   if (action === 'motor-cancel') return stopMotorRound('Round ended.');
-  if (action === 'motor-game' && !motorRound && Object.hasOwn(Motor.games,control.dataset.game)) {
+  if (action === 'motor-game' && !motorRound && Object.hasOwn(Motor.play,control.dataset.game)) {
     motorGame = control.dataset.game;
     motorResult = undefined;
     motorMessage = '';
@@ -1793,6 +1823,7 @@ document.addEventListener('input',(event) => {
     $('intensity-value').textContent = bodyEdit.intensity+' / 10';
   }
   if (control.dataset.preference === 'volume') $('volume-value').value = control.value+'%';
+  if (control.hasAttribute('data-pain-rating')) control.closest('.pain-range').querySelector('output').value = control.value+' / 10';
 });
 document.addEventListener('change',(event) => {
   const control = event.target;
@@ -1840,6 +1871,8 @@ $('problem-dialog').addEventListener('close',() => {
 document.addEventListener('submit',async (event) => {
   event.preventDefault();
   const form = event.target;
+  if (form.id === 'document-page-form') return openDocument({id:openedDocument.id,page:form.elements.page.value});
+  if (['exercise-plan-form','exercise-session-form','exercise-nutrition-form'].includes(form.id)) return submitExercise(form);
   if (['medical-supply-search','medication-form','problem-report-form','clinical-model-form'].includes(form.id)) return void submitCareForm(form);
   if (form.id === 'ultrasound-form') return void Ultrasound.analyze();
   if (['stage-form','stage-confirm-form','body-form','journal-form','document-search','records-filter','motor-filter','mood-form','backdrop-form','dismiss-alert-form','restart-chat-form'].includes(form.id)) return workspaceSubmit(form);
@@ -1861,6 +1894,11 @@ document.addEventListener('submit',async (event) => {
   if (form.id === 'delete-crew-form') return submitDeleteCrew(form);
   if (form.id === 'check-form') return submitCheck(event);
   if (form.id === 'intake-form') return submitIntake(form.elements.answer?.value || '',false,form.elements.image?.files[0]);
+  if (form.id === 'chat-pain-form' && session) {
+    const mode = form.dataset.mode;
+    const latest = (mode === 'physical' ? healthChatTurns('physical') : chat).at(-1)?.bodyFollowUp;
+    if (latest?.field === 'intensity' && latest.id === form.dataset.record) return sendMessage(form.elements.rating.value,mode);
+  }
   if (form.id === 'chat-form' || form.id === 'health-chat-form' && ['physical','mental'].includes(form.dataset.area)) {
     const deep = event.submitter?.value === 'deep';
     return sendMessage(form.elements.query.value.trim(),form.dataset.area || 'chat','',deep);

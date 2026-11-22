@@ -37,10 +37,12 @@ globalThis.MissionCare = (() => {
   function routineMedicationReport(message) {
     const text = fold(message).trim();
     const medicine = findMedication(text);
-    if (!medicine || !/^(?:i (?:just )?(?:took|have taken)|tome|acabo de tomar)\b/.test(text)) return null;
+    if (!medicine) return null;
     const names = [medicine.generic,...(medicine.name.match(/\(([^)]+)\)/)?.slice(1) || [])].map(name=>fold(name).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|');
-    const ordinary = new RegExp('^(?:i (?:just )?(?:took|have taken)|tome|acabo de tomar)\\s+(?:(?:some|a|an|one|1)\\s+)?(?:'+names+')(?:\\s+(?:tablet|pill))?[.! ]*$');
-    return ordinary.test(text) ? medicine : null;
+    const ordinary = new RegExp('^(i (?:just )?(?:took|have taken)|tome|acabo de tomar|(?:i am|im) (?:going to|gonna) take|i (?:will|plan to) take|(?:me )?voy a tomar|my (?:doctor|crew medical officer) (?:told|advised) me to take|mi (?:medico|doctor) me (?:dijo|recomendo) tomar)\\s+(?:(?:some|a|an|one|1)\\s+)?(?:'+names+')(?:\\s+(?:tablet|pill))?[.! ]*$').exec(text);
+    if (!ordinary) return null;
+    const directed = /doctor|medico|officer/.test(ordinary[1]);
+    return {...medicine,directed,planned:directed || /going to|gonna|will|plan to|voy a/.test(ordinary[1])};
   }
 
   function alternatives(state, item) {
@@ -61,11 +63,32 @@ globalThis.MissionCare = (() => {
     return [...active.values()].filter(item => item.symptom !== 'resolved');
   }
 
+  function correctBodyRegions(entries = []) {
+    return entries.map(item => {
+      const text = fold(item.notes);
+      return item.origin === 'chat' && item.region === 'head' && item.symptom === 'injury' &&
+        /\b(?:rib|costilla)s?\b/.test(text) && !/\b(?:head|headache|cabeza|skull)\b/.test(text) ?
+        {...item,region:'torso'} : item;
+    });
+  }
+
+  function checkInBody(state, draft) {
+    const message = draft.answers?.symptoms;
+    if (!message || !['headache','pain'].includes(NetinCheckIn.symptomTopic(draft))) return {draft,body:state.body};
+    const id = draft.bodyTurnId || crypto.randomUUID();
+    const captured = draft.bodyTurnId ? state.body : captureBody({...state,env:draft.env},message,{mode:'check',date:draft.date,id});
+    const intensity = draft.answers.painIntensity;
+    const onset = draft.answers.onset;
+    const body = (captured || []).map(item=>item.sourceTurn === id ? {...item,
+      intensity:Number.isInteger(intensity) ? intensity : item.intensity,onset:onset || item.onset} : item);
+    return {draft:{...draft,bodyTurnId:id},body};
+  }
+
   function captureBody(state, message, turn, previous = '') {
     const text = fold(message);
     if (!['chat','physical','check'].includes(turn.mode || 'chat') || NetinCheckIn.trainingScenario(message) ||
         /\b(?:what if|if i|my crew ?mate|my friend|mi companer[oa]|mi amig[oa])\b/.test(text) ||
-        !/\b(?:i|my|me|tengo|siento|mi|mis)\b/.test(text)) return state.body || [];
+        !/\b(?:i|ive|im|my|me|tengo|siento|mi|mis)\b/.test(text)) return state.body || [];
     if (/\b(?:yesterday|last week|ayer|semana pasada)\b/.test(text) && !/\b(?:still|now|today|sigo|ahora|hoy)\b/.test(text)) return state.body || [];
     const resolved = /\b(?:resolved|no longer|doesnt hurt|does not hurt|no pain|pain is gone|ya no|resuelto|sin dolor)\b/.test(text);
     const symptom = resolved ? 'resolved' : /\b(?:broke|broken|fractur\w*|rot[oa])\b/.test(text) ? 'injury' :
@@ -74,9 +97,10 @@ globalThis.MissionCare = (() => {
       /\b(?:stiff\w*|rigid\w*)\b/.test(text) ? 'stiffness' :
       /\b(?:irritat\w*|irrita\w*)\b/.test(text) ? 'irritation' :
       /\b(?:pain|hurt\w*|ache\w*|headaches?|dolor|duele\w*)\b/.test(text) ? 'pain' : '';
-    if (!symptom || message.includes('?') && !/\b(?:i (?:have|broke)|my .{0,25}(?:hurts|is broken)|tengo|me duele)\b/.test(text)) return state.body || [];
-    const hasAnatomy = /\b(?:arm|brazo|hand|wrist|muneca|mano|shoulder|hombro|head|headache|cabeza|neck|cuello|chest|pecho|back|espalda|abdomen|stomach|leg|pierna|foot|feet|pie|knee|rodilla)s?\b/.test(text);
-    const location = hasAnatomy ? text : text+' '+fold(previous);
+    if (!symptom || message.includes('?') && !/\b(?:i (?:have|broke|think i broke)|ive broken|my .{0,25}(?:hurts|is broken)|tengo|me duele)\b/.test(text)) return state.body || [];
+    const hasAnatomy = /\b(?:arm|brazo|hand|wrist|muneca|mano|shoulder|hombro|head|headache|cabeza|neck|cuello|chest|pecho|rib|costilla|back|espalda|abdomen|stomach|estomago|leg|pierna|foot|feet|pie|ankle|tobillo|knee|rodilla|finger|dedo)s?\b/.test(text);
+    const refersBack = /^(?:it|that|the pain|its|the injury|eso|el dolor)\b/.test(text.trim());
+    const location = !hasAnatomy && refersBack ? text+' '+fold(previous) : text;
     const left = /\b(?:left|izquierd\w*)\b/.test(location);
     const right = /\b(?:right|derech\w*)\b/.test(location);
     const both = /\b(?:both|amb[oa]s|los dos|las dos)\b/.test(location);
@@ -91,7 +115,7 @@ globalThis.MissionCare = (() => {
       if (right || both) regions.push('r'+anatomy[1]);
     } else if (/\b(?:head|headaches?|cabeza)\b/.test(location)) regions = ['head'];
     else if (/\b(?:neck|cuello)\b/.test(location)) regions = ['neck'];
-    else if (/\b(?:chest|pecho|upper back|espalda alta)\b/.test(location)) regions = ['torso'];
+    else if (/\b(?:chest|pecho|ribs?|costillas?|upper back|espalda alta)\b/.test(location)) regions = ['torso'];
     else if (/\b(?:abdomen|stomach|estomago|lower back|espalda baja)\b/.test(location)) regions = ['abdomen'];
     if (!regions.length) return state.body || [];
     const side = /\b(?:back|espalda)\b/.test(location) ? 'back' : 'front';
@@ -173,5 +197,5 @@ globalThis.MissionCare = (() => {
       Date.parse(item.expectedUntil) <= now && !notified.has(item.id));
   }
 
-  return {loadCatalog,supplies,reference,findMedication,routineMedicationReport,referenceOptions,alternatives,activeBody,captureBody,bodyFollowUp,bodyQuestion,recordMedication,medicationTime,dueMedications};
+  return {loadCatalog,supplies,reference,findMedication,routineMedicationReport,referenceOptions,alternatives,activeBody,correctBodyRegions,checkInBody,captureBody,bodyFollowUp,bodyQuestion,recordMedication,medicationTime,dueMedications};
 })();

@@ -157,6 +157,32 @@ summary{font-weight:670;cursor:pointer}
 .strong{background:#df758a;border-color:#922a42}
 .legend{font-size:.78rem;color:var(--muted)}
 .table-scroll{overflow:auto}
+.exercise-guides{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px}
+.exercise-guides figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:12px;background:var(--paper)}
+.exercise-guides canvas{width:100%;height:auto;display:block}
+.exercise-guides figcaption{padding:10px 12px}
+.exercise-guides figcaption small{display:block;color:var(--muted)}
+.exercise-guides figcaption p{font-size:.9em;margin:5px 0 0}
+.exercise-schedule{padding-left:20px}
+.exercise-schedule :is(span,small){display:block;margin-bottom:5px}
+.concern-list,.motor-personal-results{list-style:none;margin:12px 0;padding:0;display:grid;gap:8px}
+.body-concern,.motor-personal-results li{display:flex;align-items:center;gap:12px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--paper)}
+.body-concern small,.motor-personal-results small{display:block;color:var(--muted)}
+.body-thumbnail{display:block;flex:0 0 36px;width:36px;height:64px;overflow:hidden}
+.body-thumbnail .body-figure{display:block;margin:0;transform:scale(.26);transform-origin:top left;pointer-events:none}
+.body-thumbnail .region{background:var(--line);border-color:var(--muted)}
+.body-thumbnail .mini-highlight{background:var(--blue);border-color:var(--blue)}
+.motor-personal-results li{flex-wrap:wrap;justify-content:space-between;row-gap:4px}
+.motor-personal-results li span{width:100%;font-size:.9em}
+.motor-progress{display:grid;gap:6px;max-width:360px}
+.motor-progress progress{width:100%;accent-color:var(--blue)}
+.pain-card,.check-in-record,.record-conversations{background:var(--paper);border:1px solid var(--line);border-inline-start:4px solid var(--blue);padding:12px 16px;margin:12px 0;border-radius:10px}
+.range-scale{display:flex;justify-content:space-between;gap:6px;color:var(--muted);align-items:center}
+.pain-card>.button{margin-top:10px}
+.check-in-observations{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}
+.check-in-observations div{border:1px solid var(--line);padding:8px 10px;border-radius:8px}
+.record-conversations>summary{font-weight:730;color:var(--blue)}
+.motor-search-cell{cursor:pointer}
 table{width:100%;border-collapse:collapse;font-size:.86rem;text-align:left}
 th,td{padding:8px 9px;border-bottom:1px solid var(--line);vertical-align:top}
 th{background:var(--light);color:var(--ink)}
@@ -194,6 +220,9 @@ dialog::backdrop{background:#17263c88}
 dialog header{display:flex;align-items:start;justify-content:space-between;gap:10px;margin-bottom:14px}
 .markdown-reader{margin:0;font-size:.88rem}
 #toast:not(:empty){position:fixed;z-index:9;bottom:20px;right:20px;max-width:min(420px,90vw);padding:12px 16px;border-radius:10px;background:var(--nav);color:white;box-shadow:0 3px 20px #17263c33}
+#developer-report-launcher:not([hidden]){position:fixed;z-index:8;bottom:18px;right:18px;box-shadow:0 3px 14px #17263c44}
+#developer-report-launcher:not([hidden])~#toast:not(:empty){bottom:72px}
+body:has(#developer-report-launcher:not([hidden])) #main{padding-bottom:76px}
 
 /* NETIN mission workspace */
 :root{--ink:#172c3f;--muted:#526c7e;--line:#dce6ec;--white:#fff;--paper:#f3f7fa;--nav:#edf4f7;--blue:#285f84;--light:#e7f1f7;--good:#206252;--good-bg:#e8f4ee;--warn:#76501c;--warn-bg:#fff2db;--danger:#9c293b;--danger-bg:#fff0f1;--gap:16px;--sidebar-width:220px;font-family:"Public Sans","Segoe UI",sans-serif;background:var(--paper);color:var(--ink)}
@@ -369,6 +398,7 @@ dialog{color:var(--ink);background:var(--white);max-height:calc(100vh - 34px);bo
 .photo-capture{max-width:740px;margin:auto}
 .camera-frame{position:relative;display:grid;place-items:center;background:#152839;border-radius:13px;overflow:hidden;min-height:220px}
 .camera-frame :is(video,img){max-width:100%;max-height:46vh}
+.camera-frame :is(video,.camera-capture-preview){transform:scaleX(-1)}
 .camera-guide{position:absolute;width:min(45%,215px);height:70%;border:2px dashed #ecfafdee;border-radius:45%;pointer-events:none}
 .camera-count{position:absolute;display:grid;place-items:center;background:#122c45d9;color:#fff;font-size:3rem;font-weight:750;border-radius:50%;width:90px;height:90px}
 .motor-board{padding:8px;background:var(--paper);border:1px solid var(--line);border-radius:12px}

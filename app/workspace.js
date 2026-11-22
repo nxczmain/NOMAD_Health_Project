@@ -19,6 +19,7 @@ let bodySelection = new Map();
 let bodyEdit;
 let moodDraft;
 let documentQuery = '';
+let documentTopic = '';
 let openedDocument;
 let summaryPending = '';
 let trendMetric = 'pulse';
@@ -121,7 +122,7 @@ function vitals(entry, keys = Object.keys(metricNames), latest = false) {
     return '<div class="vital '+(flag ? 'review' : '')+'"><span class="vital-header">'+UI.icon(metric.key)+metricNames[metric.key]+'</span><strong'+
       (live ? ' data-archer-reading="'+metric.key+'"' : '')+'>'+(value == null ? '—' : escape(E.format(value)))+'</strong><small>'+
       (value == null ? 'No reading' : escape(metric.unit)+(fromWearable ? ' · ARCher (simulated)' : demoMood || (latest && source.sample && metric.key === 'mood') ? ' · Demo self-report' : latest ? ' · '+formatDay(source.date) : ''))+'</small>'+
-      (flag ? '<small class="baseline">Review · Demo baseline '+escape(E.format(metric.base))+'</small>' : '')+'</div>';
+      (flag ? '<small class="baseline">Review'+(source?.sample && simulation() ? ' · Demo baseline '+escape(E.format(metric.base)) : '')+'</small>' : '')+'</div>';
   }).join('')+'</div>';
 }
 
@@ -130,9 +131,7 @@ function medicalFlags(entry) {
     return '<p class="notice critical">An urgent concern was reported today. Follow the emergency instructions in the Assistant.</p>';
   }
   const physical = globalThis.MissionCare?.activeBody(state) || [];
-  const body = physical.length ? '<ul class="plain-list">'+physical.map(item => '<li><strong>'+escape(regionLabel(item.side,item.region))+'</strong> · '+
-    escape(symptoms[item.symptom] || item.symptom)+(item.intensity == null ? '' : ' · '+item.intensity+'/10')+
-    (item.notes ? ' · '+escape(item.notes) : '')+' <small>'+formatDay(item.date)+'</small></li>').join('')+'</ul>'+button('Open body map','open-body-map','compact') : '';
+  const body = physical.length ? '<ul class="concern-list">'+physical.map(bodyConcern).join('')+'</ul>'+button('Open body map','open-body-map','compact') : '';
   if (!entry) return body || empty('No check-in in this stage yet.');
   const review = CI.differingReadings(entry).map(metric => metricNames[metric.key]);
   const flags = [...review.map(item => 'Review the recorded '+item.toLowerCase()+'.'),
@@ -342,6 +341,7 @@ function healthChat(area) {
   return card(mental ? 'Mental health with Ham' : 'Physical health with Ham',
     recorded+'<div id="health-chat-log" class="health-transcript" aria-live="polite">'+history.slice(-6).map(turn => messageBubble(turn)).join('')+
     pendingHam(area)+'</div>'+
+    (!mental ? pendingPainForm(history,'physical') : '')+
     (mental ? '<div class="ham-inline ham-composer">'+UI.ham('ham-small',2,'mental')+'<strong>Ham</strong></div>' : '')+
     '<form id="health-chat-form" class="composer" data-area="'+area+'">'+
     field('Message',
@@ -467,6 +467,16 @@ function bodyStatus(record) {
   if (record.intensity == null) return 'reported';
   return record.intensity >= 7 ? 'strong' : record.intensity >= 4 ? 'medium' : 'low';
 }
+function bodyConcern(item) {
+  const side = item.side === 'back' ? 'back' : 'front';
+  const region = regionLabel(side,item.region) || 'Region not recorded';
+  const label = item.region === 'head' && item.symptom === 'pain' ? 'Headache' : region+' · '+(symptoms[item.symptom] || 'Concern reported');
+  const mini = '<span class="body-thumbnail" aria-hidden="true"><span class="body-figure '+side+'">'+
+    Object.keys(regions).map(part=>'<span class="region '+part+(part === item.region ? ' mini-highlight' : '')+'"></span>').join('')+'</span></span>';
+  return '<li class="body-concern">'+mini+'<div><strong>'+escape(label)+'</strong><small>'+formatDay(item.date)+' · '+
+    (item.intensity == null ? 'Intensity not recorded' : escape(item.intensity)+'/10')+'</small>'+
+    (item.notes ? '<details><summary>Original report</summary><p>'+escape(item.notes)+'</p></details>' : '')+'</div></li>';
+}
 function selectedHistory(selection) {
   return activeBodyRecords().filter(item => regionKey(item) === regionKey(selection)).sort((a,b) => (b.reportedAt || b.date).localeCompare(a.reportedAt || a.date));
 }
@@ -584,10 +594,27 @@ function motorHistoryFilter() {
     '<button class="button compact">Apply</button>'+button('Clear','clear-motor-date','compact')+'</form>'+motorTable(days,state.env);
 }
 function skillsHealth() {
-  const recent = motorHistory().filter(result => result.env === state.env).sort((a,b) => b.date.localeCompare(a.date))[0];
-  return '<div class="workspace-grid">'+card('Performance summary',healthReview('skills',null,'Review comparable test results with Ham.'),summaryAction('skills'))+
-    card('Latest test',recent ? motorSummary(recent) : empty('No results in this stage.'),link('Open motor tests','motor','compact'))+
-    card('Test history',motorHistoryFilter(),'','wide')+'</div>';
+  const date = E.dateKey();
+  const personal = motorHistory().filter(result=>result.env === state.env && (simulation() || !result.sample))
+    .sort((a,b)=>b.date.localeCompare(a.date));
+  const games = Object.keys(Motor.play);
+  const done = games.filter(game=>personal.some(item=>item.date === date && Motor.gameOf(item) === game)).length;
+  const results = games.map(game=>{
+    const result = personal.find(item=>Motor.gameOf(item) === game);
+    if (!result) return '<li><strong>'+Motor.games[game].name+'</strong><small>No recorded result</small></li>';
+    const baseline = Motor.baseline(result,personal);
+    const readings = Motor.games[game].metrics.map(([key,label,unit])=>{
+      const value = Motor.value(result,key);
+      return label+' '+value+' '+unit+(baseline ? ' (usual '+baseline[key]+' '+unit+')' : '');
+    }).join(' · ');
+    return '<li><strong>'+Motor.games[game].name+'</strong><small>'+formatDay(result.date)+(result.sample ? ' · Demo' : '')+
+      '</small><span>'+escape(readings)+'</span></li>';
+  }).join('');
+  return card('Motor test results','<div class="motor-progress"><label for="motor-completion">Today · '+done+' of '+games.length+
+    ' tests recorded</label><progress id="motor-completion" value="'+done+'" max="'+games.length+'"></progress></div>'+
+    '<ul class="motor-personal-results">'+results+'</ul><p class="micro">Usual values use your comparable results for the same stage, hand and device.</p>'+
+    '<details'+(motorDate ? ' open' : '')+'><summary>Test history</summary>'+motorHistoryFilter()+'</details>',
+    link('Open motor tests','motor','compact'));
 }
 
 let journalDraft;
@@ -680,7 +707,7 @@ function conversationLog(turns, fold = true) {
       (turn.partialCheck ? ' <small>(unfinished check-in)</small>' : '')+'</p>').join('');
     return fold ? '<details><summary>'+label+'</summary>'+messages+'</details>' : '<h3>'+label+'</h3>'+messages;
   }).join('');
-  return fold ? '<details><summary>Conversations ('+turns.length+')</summary>'+listings+'</details>' : '<h3>Conversations</h3>'+listings;
+  return fold ? '<details class="record-conversations"><summary>Conversations ('+turns.length+')</summary>'+listings+'</details>' : '<h3>Conversations</h3>'+listings;
 }
 
 function recordsView() {
@@ -690,10 +717,10 @@ function recordsView() {
     if (!byDay.has(date)) byDay.set(date,{});
     (byDay.get(date)[kind] ||= []).push(item);
   };
-  state.records.forEach(item => put(item.date,'check',item));
-  (state.journals || []).forEach(item => put(item.date,'journal',item));
+  state.records.filter(item=>simulation() || !item.sample).forEach(item => put(item.date,'check',item));
+  (state.journals || []).filter(item=>simulation() || !item.sample).forEach(item => put(item.date,'journal',item));
   bodyRecords().forEach(item => put(item.date,'body',item));
-  motorHistory().forEach(item => put(item.date,'motor',item));
+  motorHistory().filter(item=>simulation() || !item.sample).forEach(item => put(item.date,'motor',item));
   (state.moodLogs || []).forEach(item => put(item.date,'mood',item));
   recordedConversations().forEach(item => put(item.date,'chat',item));
   dailyPhotos.forEach((photo,date) => put(date,'photo',photo));
@@ -706,14 +733,19 @@ function recordsView() {
       '<details class="card day-record" '+(index === 0 ? 'open' : '')+'><summary>'+formatDay(day)+' <small>'+escape(day)+'</small>'+
       '<span class="day-tags">'+Object.keys(items).map(key => '<span class="state-pill">'+names[key]+'</span>').join('')+'</span></summary>'+
       (items.photo ? dailyPhoto(day) : '')+
-      (items.check || []).map(item => '<h3>Check-in · '+stages[item.env]+(item.sample ? ' · Demo' : '')+'</h3>'+vitals(item)+
-        (item.details || []).map(detail => '<p><strong>'+escape(detail.title)+'</strong> '+escape(detail.answer)+'</p>').join('')+
-        (item.values.note ? '<p>'+escape(item.values.note)+'</p>' : '')+preview(item.image)+recordedSummary(item.summary,'')).join('')+
+      (items.check || []).map(item => {
+        const entries = [...(item.details || []),...(item.values.note ? [{title:'Observations',answer:item.values.note}] : [])];
+        return '<section class="check-in-record"><h3>'+UI.icon('check')+' Check-in · '+stages[item.env]+(item.sample ? ' · Demo' : '')+'</h3>'+vitals(item)+
+          (entries.length ? '<dl class="check-in-observations">'+entries.map(detail => '<div><dt>'+escape(detail.title)+'</dt><dd>'+
+            escape(CI.describeObservation(detail.answer,detail.title))+'</dd></div>').join('')+'</dl>'+
+            '<details><summary>Original check-in notes</summary>'+entries.map(detail=>'<p><strong>'+escape(detail.title)+'</strong> '+escape(detail.answer)+'</p>').join('')+'</details>' : '')+
+          preview(item.image)+'</section>';
+      }).join('')+
       (items.journal || []).map(item => '<h3>Journal · '+stages[item.env]+'</h3><p>'+escape(item.text)+'</p>'+recordedSummary(item.summary,'')).join('')+
       (items.motor || []).map(item => '<h3>'+escape(Motor.games[Motor.gameOf(item)].name)+' · '+stages[item.env]+'</h3>'+motorSummary(item)).join('')+
-      (items.body || []).map(item => '<p><strong>'+regionLabel(item.side,item.region)+' · '+symptoms[item.symptom]+'</strong> '+item.intensity+'/10 '+escape(item.notes)+'</p>').join('')+
+      (items.body?.length ? '<h3>Reported symptoms</h3><ul class="concern-list">'+items.body.map(bodyConcern).join('')+'</ul>' : '')+
       (items.mood || []).map(item => '<h3>Mood check-in</h3>'+moodReport(item)).join('')+
-      conversationLog(items.chat || [])+'<div class="actions">'+button('Save daily report','export-day','compact','data-day="'+day+'"')+'</div></details>').join('')+'</div>' :
+      conversationLog(items.chat || [])+'<div class="actions">'+button('Save daily report','export-day','primary','data-day="'+day+'"')+'</div></details>').join('')+'</div>' :
       '<section class="card ham-inline">'+UI.ham('ham-small',2,'records')+
       (recordsFilter.date || recordsFilter.env ? '<p>No records match these filters. Clear the filters to see all records.</p>' :
         '<div><p>Complete a daily check-in to save your first record.</p>'+button('Start check-in','assist-check','compact')+'</div>')+'</section>');
@@ -727,10 +759,21 @@ function documentTarget(source) {
   return /^https:\/\//i.test(source.url || '') ? '<a class="button compact" href="'+escape(source.url)+'" target="_blank" rel="noopener noreferrer">Open source</a>' : '';
 }
 
-function markdownPreview(item, range) {
-  const source = item.markdown;
+const documentPageCache = new WeakMap();
+function documentPages(item) {
+  if (documentPageCache.has(item)) return documentPageCache.get(item);
+  const markers = [...item.markdown.matchAll(/^## PDF page (\d+)[^\S\n]*$/gm)];
+  const pages = markers.map((marker,index) => ({page:Number(marker[1]),start:marker.index,
+    end:markers[index+1]?.index ?? item.markdown.length}));
+  documentPageCache.set(item,pages);
+  return pages;
+}
+
+function markdownPreview(item, range, page) {
+  const offset = page?.start ?? 0;
+  const source = item.markdown.slice(offset,page?.end);
   const blocks = Array.from(source.matchAll(/\S[^\n]*(?:\n(?!\s*\n)[^\n]+)*/g));
-  const inPassage = match => range && match.index + match[0].length > range.start && match.index < range.end;
+  const inPassage = match => range && offset+match.index+match[0].length > range.start && offset+match.index < range.end;
   const focus = blocks.find(match => inPassage(match) && !/^#{1,6} [^\n]+\s*$/.test(match[0])) || blocks.find(inPassage);
   return '<article class="document-content" aria-label="'+escape(item.title)+'">'+blocks.map(match => {
     const lines = match[0].trim().split(/\r?\n/);
@@ -755,11 +798,22 @@ function markdownPreview(item, range) {
   }).join('')+'</article>';
 }
 function openDocument(data) {
-  const item = library.find(entry => entry.id === data.id);
+  let item = library.find(entry => entry.id === data.id);
   if (!item) return;
+  const fullChecklist = library.find(entry=>entry.title === 'ISS-Medical-Checklist-2001');
+  if (fullChecklist && /\bISS Medical Checklist\s*-\s*ACLS Algorithm\b/i.test(item.title)) {
+    item = fullChecklist;
+    data = {id:item.id,page:117};
+  }
   const start = Number(data.start);
   const end = Number(data.end);
-  openedDocument = {id:item.id,range:Number.isFinite(start) && Number.isFinite(end) && end > start ? {start,end} : null};
+  const range = Number.isFinite(start) && Number.isFinite(end) && end > start ? {start,end} : null;
+  const query = documentQuery.trim().toLowerCase();
+  const anchor = range?.start ?? (query && !item.title.toLowerCase().includes(query) ? item.markdown.toLowerCase().indexOf(query) : -1);
+  const pages = documentPages(item);
+  const page = pages.find(section => Number(data.page) === section.page) ||
+    pages.find(section => section.start <= anchor && anchor < section.end) || pages[0];
+  openedDocument = {id:item.id,range,page:page?.page};
   showRoute('guias');
   const target = $('document-passage') || $('document-reading');
   target?.scrollIntoView({block:'nearest'});
@@ -778,42 +832,97 @@ function documentsView() {
         (libraryError ? '<p class="error">'+escape(libraryError)+'</p>' : '')+load+'</div></div>');
   }
   const query = documentQuery.toLowerCase().trim();
-  const matches = library.filter(item => (item.relative+' '+item.markdown).toLowerCase().includes(query));
+  const fullChecklist = library.find(entry=>entry.title === 'ISS-Medical-Checklist-2001');
+  const searchText = value => value.toLowerCase().replace(/[-_]+/g,' ');
+  const normalizedQuery = searchText(query);
+  const score = item => (item === fullChecklist && /\b(?:iss|acls)\b/.test(query) ? 30 : 0)+
+    (query && searchText(item.title).includes(normalizedQuery) ? 10 : 0)+
+    (query && searchText(item.relative).includes(normalizedQuery) ? 1 : 0);
+  const matches = library.filter(item => (!documentTopic || item.relative.startsWith('Exercise/')) &&
+    !(fullChecklist && /\bISS Medical Checklist\s*-\s*ACLS Algorithm\b/i.test(item.title)) &&
+    (!query || searchText(item.relative).includes(normalizedQuery) || item.markdown.toLowerCase().includes(query)))
+    .sort((a,b)=>score(b)-score(a));
+  if (!documentTopic && fullChecklist && /\b(?:acls|iss)\b/.test(query) && !matches.includes(fullChecklist)) matches.unshift(fullChecklist);
   const active = library.find(item => item.id === openedDocument?.id);
-  const sourcePage = active?.excerpts.find(item => openedDocument.range && item.start < openedDocument.range.end && item.end > openedDocument.range.start)?.page;
+  const pages = active ? documentPages(active) : [];
+  const pageIndex = pages.findIndex(section => section.page === openedDocument?.page);
+  const page = pages[pageIndex];
+  const sourcePage = page?.page;
+  const goto = (label,number) => button(label,'read-markdown','compact',
+    'data-id="'+escape(active.id)+'" data-page="'+number+'"');
+  const navigation = page ? '<form id="document-page-form" class="search-form"><label>PDF page <input name="page" type="number" min="'+pages[0].page+
+    '" max="'+pages.at(-1).page+'" value="'+sourcePage+'" required></label><button class="button compact">Go</button></form>'+
+    '<div class="actions">'+(pageIndex > 0 ? goto('Previous page',pages[pageIndex-1].page) : '')+
+    (pageIndex < pages.length-1 ? goto('Next page',pages[pageIndex+1].page) : '')+
+    (active.title === 'ISS-Medical-Checklist-2001' ? goto('ACLS algorithm',117)+goto('CPR',145)+goto('Fractures',367) : '')+'</div>' : '';
   const originalLinks = active ? (active.status ? '<p class="notice">'+escape(active.status)+'</p>' : '')+
     (active.original ? '<p><a href="'+escape(active.original)+(sourcePage ? '#page='+sourcePage : '')+'">Open original PDF'+(sourcePage ? ' · page '+sourcePage : '')+'</a></p>' : '')+
     (active.url && /^https:\/\//i.test(active.url) ? '<p><a href="'+escape(active.url)+'">Open original source</a></p>' : '') : '';
   const results = matches.map(item => {
     const index = query ? item.markdown.toLowerCase().indexOf(query) : 0;
     const snippet = item.markdown.slice(Math.max(0,index-34),Math.max(0,index)+112).replace(/\s+/g,' ');
-    return '<div class="document-row"><div><strong>'+escape(item.title)+'</strong><small>'+escape(snippet)+'</small></div>'+
+    return '<div class="document-row"><div><strong>'+escape(item === fullChecklist ? 'ISS Medical Checklist (2001) · Full manual' : item.title)+'</strong><small>'+
+      escape(item === fullChecklist ? documentPages(item).length+' indexed PDF pages · Historical NASA reference' : snippet)+'</small></div>'+
       button(active === item ? 'Open again' : 'Open','read-markdown','compact','data-id="'+escape(item.id)+'" aria-label="Open '+escape(item.title)+'"')+'</div>';
   }).join('');
   const semantic = button('Prepare semantic search','index-semantic','','id="index-semantic"'+
     (missionIndexing || semanticIndexing ? ' disabled' : ''))+
     '<p id="semantic-status" class="muted" role="status">'+escape(semanticStatus)+'</p>';
   return pageHead('', 'Documents', '',load)+picker+'<div class="workspace-grid document-layout">'+
-    card('Local library','<form id="document-search" class="search-form">'+field('Search documents','<input name="query" type="search" value="'+escape(documentQuery)+'" placeholder="Title or content">')+
+    card('Local library','<div class="actions">'+button('All references','document-topic','compact','data-topic="" aria-pressed="'+(!documentTopic)+'"')+
+      button('Exercise research','document-topic','compact','data-topic="exercise" aria-pressed="'+(documentTopic === 'exercise')+'"')+'</div>'+
+      '<form id="document-search" class="search-form">'+field('Search documents','<input name="query" type="search" value="'+escape(documentQuery)+'" placeholder="Title or content">')+
       '<button class="button compact">Search</button></form><p class="muted" role="status">'+escape(missionImport || matches.length+' of '+library.length+' documents')+'</p>'+
       (libraryError ? '<p class="error">'+escape(libraryError)+'</p>' : '')+semantic+
       (results || empty('No matches.')))+
-    card(active ? escape(active.title) : 'Reader',active ? '<div id="document-reading" tabindex="-1">'+originalLinks+markdownPreview(active,openedDocument.range)+'</div>' :
+    card(active ? escape(active.title) : 'Reader',active ? '<div id="document-reading" tabindex="-1">'+originalLinks+navigation+markdownPreview(active,openedDocument.range,page)+'</div>' :
       empty('Choose a document to read.'))+'</div>';
 }
+let modelDownload = '';
+let modelDownloadError = '';
+let downloadingModels = false;
+
+async function downloadRequiredModels() {
+  if (downloadingModels || !session) return;
+  const owner = session;
+  downloadingModels = true;
+  modelDownloadError = '';
+  try {
+    const local = await AI.modelStatus();
+    const missing = [['medgemma1.5:4b',local.medicalReady],[AI.model,local.ready]];
+    for (const [name,ready] of missing) {
+      if (ready) continue;
+      modelDownload = 'Downloading '+name+'…';
+      if (session === owner && view() === 'settings') render();
+      await AI.pullModel(name);
+    }
+    modelDownload = 'MedGemma and Qwen are ready.';
+    if (session === owner) await checkModel();
+  } catch (error) {
+    modelDownload = '';
+    modelDownloadError = error.message;
+  } finally {
+    downloadingModels = false;
+    if (session === owner && view() === 'settings') render();
+  }
+}
+
 function settingsView() {
   const status = {unchecked:'Not checked',checking:'Checking…',ready:'MedGemma is ready',missing:'MedGemma is missing',offline:'Ollama is offline'};
   const models = AI.availableModels();
   const modelRows = model === 'ready' || model === 'missing' ?
-    '<ul>'+[[AI.model,'Standard wording',models.ready],[AI.deepModel,'Clearer wording',models.deepReady],
-      [AI.embeddingModel,'Semantic search',models.embeddingReady],['qwen3-vl:4b','Simulated ultrasound',models.visionReady]]
-      .map(([tag,label,ready]) => '<li>'+label+' · '+(ready ? 'Ready' : 'Install with <code>ollama pull '+tag+'</code>')+'</li>').join('')+'</ul>' : '';
+    '<ul><li>MedGemma · '+(models.medicalReady ? 'Ready' : 'Download required')+'</li><li>Qwen · '+
+    (models.ready ? 'Ready' : 'Download required')+'</li></ul>'+
+    '<details><summary>Optional local models</summary><ul>'+[[AI.deepModel,'Clearer wording',models.deepReady],
+      [AI.embeddingModel,'Semantic search',models.embeddingReady]]
+      .map(([tag,label,ready]) => '<li>'+label+' · '+(ready ? 'Ready' : '<code>ollama pull '+tag+'</code>')+'</li>').join('')+'</ul></details>' : '';
   const choices = (key,label,options) => '<select aria-label="'+label+'" data-preference="'+key+'">'+Object.entries(options).map(([value,label]) =>
     '<option value="'+value+'"'+(appearance[key] === value ? ' selected' : '')+'>'+label+'</option>').join('')+'</select>';
-  const connectionHelp = ['offline','missing'].includes(model) ?
-    '<div class="ham-inline ham-connection">'+UI.ham('ham-small',2,'dormido')+
-    '<div><p>Install and open Ollama. In PowerShell, run these commands.</p><pre><code>ollama pull medgemma1.5:4b\nollama pull qwen3:4b\nollama list</code></pre>'+
-    '<p>Confirm that <code>medgemma1.5:4b</code> appears, then leave Ollama running and check the connection.</p></div></div>' : '';
+  const connectionHelp = model === 'offline' ?
+    '<p>Install or open <a href="https://ollama.com/download/windows">Ollama for Windows</a>, then check the connection.</p>' :
+    (model === 'ready' || model === 'missing') && (!models.medicalReady || !models.ready) ?
+      '<p>The first download needs internet access and about 6 GB of storage.</p>'+
+      button('Download required models','download-local-models','primary',downloadingModels ? 'disabled' : '') : '';
   return pageHead('', 'Settings', '')+'<div class="workspace-grid">'+
     card('Appearance','<div class="appearance-controls">'+field('Theme',choices('theme','Theme',{light:'Light',dark:'Dark'}))+
       field('Text size',choices('text','Text size',{standard:'Standard',large:'Large',larger:'Extra large'}))+
@@ -821,7 +930,10 @@ function settingsView() {
     card('Voice &amp; Audio',field('Volume','<input type="range" min="0" max="100" value="'+appearance.volume+'" data-preference="volume">')+
       '<output id="volume-value">'+appearance.volume+'%</output><div class="actions">'+button('Automatic read-aloud','toggle-speech','','aria-pressed="'+readAloud+'"')+'</div>')+
     card('Profile','<p>'+escape(state.profile.name)+'</p><div class="actions">'+button('Edit profile','profile')+button('Sign out','exit-crew')+'</div>')+
-    card('Local assistant','<p role="status">'+status[model]+'</p>'+connectionHelp+modelRows+button('Check connection','model','','id="check-connection"'+
+    card('Local assistant','<p role="status">'+(model === 'ready' && models.ready ? 'MedGemma and Qwen are ready' : status[model])+'</p>'+connectionHelp+modelRows+
+      (modelDownload ? '<p role="status">'+escape(modelDownload)+'</p>' : '')+
+      (modelDownloadError ? '<p class="error" role="alert">'+escape(modelDownloadError)+'</p>' : '')+
+      button('Check connection','model','','id="check-connection"'+
       (model === 'checking' || busy ? ' disabled' : '')))+
     card('Medical model','<p>Medical interpretation · '+escape(AI.clinicalModel())+'</p><p>Chat and explanations · '+escape(AI.model)+'</p><form id="clinical-model-form">'+
       field('Installed Ollama model','<input name="modelName" maxlength="160" value="'+escape(AI.clinicalModel())+'" placeholder="Local MedGemma 1.5 model name" required>')+
@@ -938,10 +1050,7 @@ async function generateSummary(area) {
       const context = crewContext('daily');
       const terms = context.checkIns.flatMap(item => [item.note,...item.interview.map(detail => detail.answer)]).join(' ').slice(0,800);
       summary = await AI.answer('Explain the relevant readings, evidence-based precautions and a concrete next step.',[],library,context,terms);
-    } else {
-      const games = (state.motorLogs || []).slice().sort((a,b) => b.date.localeCompare(a.date)).slice(0,10);
-      summary = {text:await AI.reflect('Summarize comparable results and changes. Keep units, hand and environment. Avoid clinical conclusions.',{games}),scope:area};
-    }
+    } else return;
     if (owner !== session) return;
     summary = {...summary,date:E.dateKey(),env:state.env};
     if (save({...state,healthSummaries:{...state.healthSummaries,[area]:summary}})) presented = summary;
@@ -1042,6 +1151,12 @@ function workspaceClick(control) {
   else if (action === 'choose-markdown') $('markdown-files').click();
   else if (action === 'index-semantic') void prepareSemanticSearch();
   else if (action === 'read-markdown') openDocument(control.dataset);
+  else if (action === 'document-topic' && ['', 'exercise'].includes(control.dataset.topic)) {
+    documentTopic = control.dataset.topic;
+    documentQuery = '';
+    render();
+    document.querySelector('[data-action="document-topic"][aria-pressed="true"]')?.focus();
+  }
   else if (action === 'clear-records-filter') { recordsFilter = {date:'',env:''}; render(); }
   else if (action === 'clear-motor-date') { motorDate = ''; render(); }
   else return false;
@@ -1149,7 +1264,7 @@ function assistantView() {
     (current ? intakeTranscript(current,busy ? null : CI.question(current)) :
       messages || empty(isCheck ? 'Start a new daily check-in with Ham. It will be saved in Records.' : 'Hello, '+firstName()+'. How is your shift going?'))+
     pendingHam(assistantTab)+'</div>'+
-    (isCheck ? current && !alert ? intakeComposer(CI.question(current)) : '' : '<form id="chat-form" class="composer">'+field('Message',
+    (isCheck ? current && !alert ? intakeComposer(CI.question(current)) : '' : pendingPainForm(history,'chat')+'<form id="chat-form" class="composer">'+field('Message',
       '<textarea name="query" rows="2" maxlength="1000" placeholder="Ask Ham a question or share how you are doing" required '+(busy ? 'disabled' : '')+'></textarea>')+
       hamReplyButtons()+'</form>')+'</section>';
 }

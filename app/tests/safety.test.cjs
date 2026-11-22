@@ -129,7 +129,12 @@ test('distinguishes fresh readings, missing readings and personal duty notes', (
   check = CI.apply(check,CI.question(check),'no',false);
   check = CI.apply(check,CI.question(check),'My shoulder hurts today. Yesterday my pulse was 90 bpm.',false);
   assert.equal(check.values.pulse,undefined);
-  check = CI.apply(check,CI.question(check),'I had to switch tasks halfway through my shift.',false);
+  assert.equal(CI.question(check).key,'painIntensity');
+  check = CI.apply(check,CI.question(check),'4',false);
+  assert.equal(check.answers.painIntensity,4);
+  assert.ok(CI.questions(check).every(question=>question.key !== 'impact'));
+  const legacyImpact = {key:'impact',prompt:'Effect on duties',freeText:true,options:{task:'It affects my duties'}};
+  check = CI.apply(check,legacyImpact,'I had to switch tasks halfway through my shift.',false);
   assert.equal(check.answers.impact,'I had to switch tasks halfway through my shift.');
   assert.equal(check.values.impact,undefined);
   assert.equal(CI.toEntry(check).details.some(detail => detail.title === 'Effect on duties'),true);

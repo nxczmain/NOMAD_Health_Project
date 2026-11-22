@@ -42,6 +42,7 @@ internal sealed class LocalAi : IDisposable
             id = Convert.ToInt32(request["id"]);
             string operation = request["operation"] as string;
             if (operation == "status") result = await CheckStatusAsync();
+            else if (operation == "pull") result = await PullAsync((Dictionary<string, object>)request["body"]);
             else if (operation == "chat") result = await ChatAsync((Dictionary<string, object>)request["body"], Model);
             else if (operation == "deep") result = await ChatAsync((Dictionary<string, object>)request["body"], DeepModel);
             else if (operation == "embed") result = await EmbedAsync((Dictionary<string, object>)request["body"]);
@@ -139,6 +140,29 @@ internal sealed class LocalAi : IDisposable
                 throw new InvalidOperationException("Ollama at " + baseUrl + " could not run " + expectedModel +
                     " (HTTP " + (int)response.StatusCode + "). Check the Ollama logs and try again.");
             return json.Deserialize<Dictionary<string, object>>(await response.Content.ReadAsStringAsync());
+        }
+    }
+
+    private async Task<string> PullAsync(Dictionary<string, object> body)
+    {
+        string name = body["model"] as string;
+        if (name != Model && name != MedicalModel)
+            throw new InvalidOperationException("Only the required NOMAD models can be downloaded here.");
+        using (var downloader = new HttpClient(new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false }))
+        using (var content = new StringContent(json.Serialize(new { model = name, stream = false }), Encoding.UTF8, "application/json"))
+        {
+            downloader.Timeout = TimeSpan.FromMinutes(45);
+            downloader.MaxResponseContentBufferSize = 200000;
+            using (HttpResponseMessage response = await downloader.PostAsync(baseUrl + "/api/pull",content))
+            {
+                if (!response.IsSuccessStatusCode)
+                    throw new InvalidOperationException("Ollama could not download " + name + ". Check your internet connection and available disk space.");
+                var result = json.Deserialize<Dictionary<string, object>>(await response.Content.ReadAsStringAsync());
+                object status;
+                if (!result.TryGetValue("status",out status) || (string)status != "success")
+                    throw new InvalidOperationException("Ollama did not confirm the download of " + name + ".");
+                return name;
+            }
         }
     }
 
