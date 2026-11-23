@@ -6,7 +6,7 @@
 
 **A local health workstation for astronaut crews.** Log daily observations, review changes across a mission stage, look up onboard references and prepare a handoff for the crew medical officer. The Windows application opens as `NETIN.exe`.
 
-[**Download for Windows**](https://github.com/nxczmain/NOMAD_Health_Project/releases/latest/download/NETIN-Windows-x64.zip) · [Quick start](#quick-start) · [App screenshots](#app-screenshots) · [Sources and references](#sources-and-references) · [Repository map](#repository-map) · [Installation](docs/INSTALLATION.md)
+[**Download for Windows**](https://github.com/nxczmain/NOMAD_Health_Project/releases/latest/download/NETIN-Windows-x64.zip) · [Quick start](#quick-start) · [App screenshots](#app-screenshots) · [Sources and references](#sources-and-references) · [Repository map](#repository-map) · [Bug Fixes](BUG-FIXES.md) · [Installation](docs/INSTALLATION.md)
 
 ![NOMAD Home screen with the Earth Orbit demo profile, daily routine and latest readings](docs/images/app/03-home.jpg)
 
@@ -98,7 +98,7 @@ Run `node --test app/tests/*.test.cjs` from the repository root. The [build inst
 
 ## Feedback
 
-For a bug report, include the NOMAD version, the affected screen, the steps you followed and the expected result. A **Developer** profile can save a report with an in-app screenshot for review before sharing. [Developer reporting](docs/APP-GUIDE.md#developer-issue-report) · [GitHub Issues](https://github.com/nxczmain/NOMAD_Health_Project/issues)
+For a bug report, include the NOMAD version, the affected screen, the steps you followed and the expected result. A **Developer** profile can save a report with an in-app screenshot for review before sharing. [Developer reporting](docs/APP-GUIDE.md#developer-issue-report) · [Bug Fixes and issue register](BUG-FIXES.md) · [GitHub Issues](https://github.com/nxczmain/NOMAD_Health_Project/issues)
 
 ## Team
 
