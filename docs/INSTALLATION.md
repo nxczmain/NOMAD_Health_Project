@@ -28,6 +28,8 @@ For an installation that uses a custom Ollama port or separate model folder, run
 
 ## Try the update
 
+For a first run, follow the [quick-start tutorial](QUICKSTART.md) or browse the [illustrated app guide](APP-GUIDE.md).
+
 - In **Documents**, the bundled library loads on startup. It includes the ISS medical kit, references for CPR in microgravity and 44 NIMH publications linked to their sources. **Load Markdown folder** is available for a custom library.
 - In a demo profile, try the [practice scenarios](HAM-SIMULATIONS.md). Open **Sources** to see the relevant passage or linked original.
 - In **Health → Physical → Ultrasound simulation**, choose a file from `Ultrasound Samples` and confirm it is synthetic before analyzing it.

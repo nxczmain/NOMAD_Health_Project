@@ -1,192 +1,65 @@
 <p align="center">
-  <img src="app/assets/nomad-logo-dark.png" width="390" alt="NOMAD logo with a globe, a heartbeat and a spacecraft">
+  <img src="app/assets/nomad-logo-dark.png" width="275" alt="NOMAD logo with a globe, a heartbeat and a spacecraft">
 </p>
 
-<h1 align="center">NOMAD</h1>
+# NOMAD
 
-<p align="center"><strong>A local health workstation for astronaut crews</strong><br>
-Record daily observations, track changes over time, and prepare a handoff for the crew medical officer.</p>
+**A local health workstation for astronaut crews.** Log daily observations, review changes across a mission stage, look up onboard references and prepare a handoff for the crew medical officer. The Windows application opens as `NETIN.exe`.
 
-<p align="center">Built for the 2026 NASA Space Apps Challenge · <a href="https://www.spaceappschallenge.org/2026/find-a-team/printnombre_del_equipo/">Team page</a></p>
+[**Download for Windows**](https://github.com/nxczmain/NOMAD_Health_Project/releases/latest/download/NETIN-Windows-x64.zip) · [Installation](docs/INSTALLATION.md) · [Quick start](docs/QUICKSTART.md) · [App screen guide](docs/APP-GUIDE.md) · [Sources](docs/SOURCES.md)
 
-<p align="center">
-  <a href="https://github.com/nxczmain/NOMAD_Health_Project/raw/refs/heads/main/downloads/NETIN-Windows-x64.zip"><strong>Download for Windows x64</strong></a>
-  · <a href="docs/NOMAD-Project-Demonstration.pdf">Project presentation</a>
-  · <a href="#installation">Quick start</a>
-  · <a href="#judge-walkthrough">Judge walkthrough</a>
-</p>
+![NOMAD’s Home screen with the Maya Chen demo profile, the daily routine and the latest readings](docs/images/app/03-home.jpg)
 
-## Contents
+## Try the demo
 
-[Mission problem](#the-mission-problem) · [Screenshots](#see-nomad-in-action) · [Ham](#meet-ham) · [Workflow](#from-daily-check-in-to-crew-handoff) · [Installation](#installation) · [Judge walkthrough](#judge-walkthrough) · [Architecture and tests](#how-it-works) · [Repository and research](#repository-and-research) · [Team](#team)
+1. Extract the Windows ZIP, then open **NETIN.exe**.
+2. Choose **Earth Orbit** and sign in as **Maya Chen** with `OrbitDemo26`.
+3. Follow the [quick-start tutorial](docs/QUICKSTART.md) to log a practice symptom, find it in **Records** and open the ISS medical checklist in **Documents**.
 
-## The mission problem
+The Windows download includes demo profiles, synthetic ultrasound samples and the indexed research library. Set up Ollama and the two local models to use Ham’s full assistant features. [Installation and model setup](docs/INSTALLATION.md)
 
-On long missions, crew members need to recognize health changes and organize what they observed when communication with Earth may be delayed. NOMAD gives each astronaut a local record of symptoms, readings, mood and motor performance. **Ham**, the onboard assistant prototype, asks follow-up questions and retrieves relevant passages from the mission library for the crew to review. [NASA Space Apps challenge](https://www.spaceappschallenge.org/2026/challenges/health-monitoring-software/) · [NASA Human Research Program](https://www.nasa.gov/hrp/hazards/)
+## What NOMAD does
 
-## See NOMAD in action
-
-Maya Chen’s Earth Orbit demo shows the daily health routine and the latest simulated readings.
-
-![NOMAD Home screen with Maya Chen’s Earth Orbit profile, daily routine and six health indicators](docs/images/nomad-home.png)
-
-<details>
-<summary><strong>Health · Review a seven-day heart rate trend</strong></summary>
-
-![NOMAD Health screen with the latest measurements and a seven-day chart of simulated heart rate](docs/images/nomad-health.png)
-
-</details>
-
-<details>
-<summary><strong>Assistant · Chat with Ham</strong></summary>
-
-![NOMAD Assistant screen showing a demo conversation with Ham and the read-aloud controls](docs/images/nomad-assistant.png)
-
-</details>
-
-## Meet Ham
-
-<p align="center">
-  <img src="docs/images/ham-avatar.png" width="160" height="160" alt="Ham, NOMAD's pixel-art chimpanzee avatar">
-</p>
-
-Ham is NOMAD’s onboard **AI assistant**, represented by a pixel-art chimpanzee. It runs on the crew workstation through Ollama. MedGemma 1.5 interprets medical references, and Qwen3 explains the cited findings and handles dialogue. Ham helps crew members describe what they feel, find relevant mission references and organize their observations for the crew medical officer, who makes clinical decisions.
-
-The character is inspired by Ham, the chimpanzee who flew into space aboard NASA’s Mercury-Redstone 2 mission on January 31, 1961. [NASA archival photo and mission details](https://www.nasa.gov/image-article/chimpanzee-ham-with-trainers/)
-
-| What Ham does | What that looks like in NOMAD |
+| Area | What you can do |
 | --- | --- |
-| **Adapts the daily check-in** | Acknowledges how the crew member feels now, keeps track of readings they already shared and asks about the next missing detail. |
-| **Answers questions and offers support** | Uses the latest message in context. For physical health questions, Ham can show passages from the local Markdown library. In Mental Health, it responds in plain English and suggests a practical next step. |
-| **Helps prepare an urgent handoff** | NOMAD’s local safety checks trigger built-in steps as soon as they recognize an urgent report. Ham can keep the crew member’s original wording for responders. |
-| **Guides the daily routine** | Shows what’s next on Home, gives directions for the daily photo and motor test, and can summarize saved journal entries. Crew members can adjust read-aloud and animation in Settings. |
-| **Reviews simulated ultrasound images** | MedGemma describes visible features in synthetic training images the crew uploads. |
+| Assistant | Run a guided daily check-in or ask Ham about a documented topic. Use **Sources** to inspect the passages behind a cited reply. |
+| Health | Review readings and trends, mark a concern on the body map, check in on mood, view motor-test results and prepare a medical review. |
+| Exercise | Review the stage’s routine, watch offline movement demonstrations and record a completed session. |
+| Records | Find past check-ins and logs by date and mission stage, view trends and export a day. |
+| Documents | Search the onboard research library, jump to a checklist page and open the original source where available. |
+| Medications and supplies | Log doses already taken and record confirmed quantities in the inventory. |
 
-### Ham in the app
+[See each screen and its controls](docs/APP-GUIDE.md) · [Practice scenarios for Ham](docs/HAM-SIMULATIONS.md)
 
-These captures use Maya Chen’s demo profile and simulated inputs.
+Ham uses MedGemma for interpretation and Qwen for dialogue and wording through a local Ollama installation. The project was built for the NASA Space Apps Health Monitoring Software challenge. [How NOMAD works](docs/ARCHITECTURE.md) · [Challenge brief](https://www.spaceappschallenge.org/2026/challenges/health-monitoring-software/)
 
-**Home · The next step in the daily routine**
+> NOMAD is a research prototype. The demo uses simulated crew data. Operational use requires clinical validation and mission approval.
 
-![Home card showing Ham and a button to take the next daily photo](docs/images/ham-home.png)
+## Research and attribution
 
-<details>
-<summary><strong>Assistant · An adaptive daily check-in</strong></summary>
+The [source catalog](docs/SOURCES.md) cites all **569 indexed Markdown references**, links all **517 original PDFs** in the repository and credits the five starter notes. It highlights the historical ISS medical checklist and CPR references alongside the NASA, NIMH, and software credits. [Library organization](docs/RESEARCH.md) · [NASA sources by mission topic](docs/NASA-DATA.md)
 
-![Ham acknowledges that Maya feels better and moves on to a reading she has yet to share](docs/images/ham-daily-check-in.png)
-
-</details>
-
-<details>
-<summary><strong>Mental Health · Support during a shift change</strong></summary>
-
-![Ham responds to a simulated message about feeling low after switching to the night shift](docs/images/ham-mental-health.png)
-
-</details>
-
-## From daily check-in to crew handoff
-
-```mermaid
-flowchart LR
-    A["Log observations and readings"] --> B["Review trends and history"]
-    B --> C["Prepare a crew handoff"]
-    D["Local mission library"] --> E["Ask Ham and review sources"]
-    E --> C
-```
-
-| In NOMAD | What crew members can do |
-| --- | --- |
-| **Home** | Follow the daily routine for a photo, check-in, motor tests and journal. Review the latest indicators and follow-ups. |
-| **Health → Physical** | Log a symptom on the body map, ask Ham about a physical change or upload a synthetic ultrasound image for training. |
-| **Health → Mental** | Record how you feel and talk with Ham about mood and ways to get support. |
-| **Health → General** | Chart heart rate, blood pressure, temperature, blood glucose, sleep duration and mood. |
-| **Records** | Review previous observations by date and mission stage. Export a daily report from the current filter. |
-| **Assistant** | Chat with Ham, complete an adaptive daily check-in or practice a crew emergency handoff using a simulated report. |
-| **Exercise** | Review offline movement demonstrations and record the assigned routine, completed sessions and energy. |
-| **Documents** | Browse the bundled research in Markdown, open the full historical ISS medical checklist, or import a custom folder. |
-
-## Installation
-
-**Requirements** · Windows 10 22H2 or Windows 11 (x64), Microsoft Edge WebView2 Evergreen Runtime and .NET Framework 4.8 or later. Internet access is needed for the downloads. A camera is optional. See the [full setup guide](docs/INSTALLATION.md#first-installation) for runtime links and troubleshooting.
-
-1. **Download and extract** [NETIN-Windows-x64.zip](https://github.com/nxczmain/NOMAD_Health_Project/raw/refs/heads/main/downloads/NETIN-Windows-x64.zip). In File Explorer, right-click the ZIP and choose **Extract All**. Use a writable folder such as `Documents\NETIN`.
-2. **Start Ollama.** Install and open [Ollama for Windows](https://ollama.com/download/windows). Allow about 6 GB of space for the local models.
-
-3. **Open `NETIN.exe`** from the extracted folder. Keep `interface` and the WebView2 DLLs beside the executable. Choose a mission stage and sign in with a demo profile.
-
-   | Mission stage | Demo astronaut | Demo password |
-   | --- | --- | --- |
-   | Earth Orbit | Maya Chen | `OrbitDemo26` |
-   | Moon | Mateo Ruiz | `LunarDemo26` |
-
-4. **Set up Ham.** In **Settings → Local assistant**, select **Check connection** and use **Download required models** if MedGemma or Qwen is missing. Under **Medical model**, select **Test and use model**.
-
-The [installation guide](docs/INSTALLATION.md) covers runtime setup, updates and troubleshooting. The ZIP includes the indexed library. Open **Documents** to browse the bundled references or load a custom Markdown folder. Use [SHA256SUMS.txt](downloads/SHA256SUMS.txt) to verify the archive.
-
-## Judge walkthrough
-
-Start with **Maya Chen · Earth Orbit** to review a 30-day synthetic history and try the daily workflow. **Mateo Ruiz · Moon** offers a second mission context.
-
-| Try this | What to look for |
-| --- | --- |
-| **Assistant → Daily check-in**. Answer **No** to the opening safety question and enter “I’m feeling better now. I slept 7 hours and my pulse is 70 bpm.” | Ham acknowledges the improvement and moves to the next missing item. Select **Save and finish** to review the recap on **Home**. |
-| **Health → General**. Under **Measurement trend**, choose **Sleep** and switch between **7 days** and **30 days**. Open **Records** to inspect a previous check-in. | Compare the plotted readings with the observations saved for a date. |
-| **Assistant**. Ask “How can an irregular sleep schedule affect my ability to work?” | Read Ham’s answer and open the cited reference passages. |
-| **Health → Mental**. In **Mental health with Ham**, enter “I feel low today and miss working with my crew.” | Ham offers a practical next step in plain English and uses the mood conversation for context. |
-| **Assistant → Chat with Ham**. In a demo profile, send “My crewmate is unresponsive but breathing. What should I do?” | Ham asks you to stay calm and displays numbered steps for getting help. |
-
-Use the [Simulated Ham conversations](docs/HAM-SIMULATIONS.md) to try more check-in, physical and mental health scenarios, including urgent reports.
-
-<details>
-<summary><strong>Optional demo · Synthetic ultrasound</strong></summary>
-
-1. Open **Health → Physical → Ultrasound simulation**.
-2. Choose `phantom-dark-target.png` from `Ultrasound Samples`, confirm it is simulated, and select **Analyze with Ham**.
-
-<img src="app/Ultrasound%20Samples/phantom-dark-target.png" width="360" alt="Bundled training image showing a dark target in a simulated ultrasound scan">
-
-</details>
-
-## How it works
-
-**Desktop and records.** C# WinForms hosts the HTML, CSS and JavaScript interface in WebView2. Browser storage holds the local crew records, daily photos and imported library. The current mission stage is shared on the installation. Saved observations retain their original stage.
-
-**Ham and the mission library.** NOMAD retrieves relevant Markdown passages, checks the medical evidence MedGemma returns and gives the supported findings to Qwen. After the setup downloads, both models run locally. Recognized urgent reports trigger a built-in alert before model processing. [Architecture and build instructions](docs/ARCHITECTURE.md)
-
-**Tests.** With Node.js installed, run the conversation and safety tests from the repository root.
-
-```powershell
-node --test app/tests/*.test.cjs
-```
-
-## Repository and research
+## Repository map
 
 | Location | Contents |
 | --- | --- |
-| [`app/`](app/) | Interface, local assistant and synthetic ultrasound samples |
-| [`app/desktop/`](app/desktop/) | WinForms host, Ollama bridge and Windows build script |
-| [`app/tests/`](app/tests/) | Conversation and safety regression tests |
-| [`docs/`](docs/) | Installation, architecture, research, screenshots and the [project presentation](docs/NOMAD-Project-Demonstration.pdf) |
-| [`downloads/`](downloads/) | Windows x64 ZIP and [SHA-256 checksum](downloads/SHA256SUMS.txt) |
-| [`references/`](references/) | Five starter references for the demo |
-| [`portable/`](portable/) | Scripts for running and updating a USB installation |
-| [`Investigation (.md)/`](Investigation%20%28.md%29/) | 569 indexed references and the original conversion manifest |
-| [`investigation/`](investigation/) | Original PDFs, including figures and tables |
+| [App](app/) | Interface, assistant logic and synthetic ultrasound samples |
+| [Windows host](app/desktop/) | Desktop host, local model connection and build script |
+| [Tests](app/tests/) | Software and scenario checks |
+| [Documentation](docs/) | User guides, architecture and the project presentation |
+| [Downloads](downloads/) | Windows ZIP and [SHA-256 checksums](downloads/SHA256SUMS.txt) |
+| [Portable tools](portable/) | Scripts for running and updating a USB installation |
+| [Starter references](references/) | Five starter notes |
+| [Research Markdown](Investigation%20%28.md%29/) · [Original PDFs](investigation/) | Mission library texts, originals and import inventory |
 
-The research collection covers in-flight medical conditions, mission risks, first aid and standards. The library guide maps the topics and links to the source files. [Research library](docs/RESEARCH.md) · [NASA data and references](docs/NASA-DATA.md)
+Run `node --test app/tests/*.test.cjs` from the repository root. The [build instructions](docs/ARCHITECTURE.md#build-from-source) describe how to package Windows builds.
 
-> **Prototype status.** The demo uses synthetic crew records and ultrasound images. Operational use requires clinical validation and mission approval.
+## Feedback
+
+For a bug report, include the NOMAD version, the affected screen, the steps you followed and the expected result. A **Developer** profile can save a report with an in-app screenshot for review before sharing. [Developer reporting](docs/APP-GUIDE.md#developer-issue-report) · [GitHub Issues](https://github.com/nxczmain/NOMAD_Health_Project/issues)
 
 ## Team
 
-`print("Nombre del Equipo")`
+`print("Nombre del Equipo")` · Nicolas Jauregui, Oscar Melendez, Andrik Porchas, Marco Alvarado and Luiz Ruiz.
 
-- Nicolas Jauregui
-- Oscar Melendez
-- Andrik Porchas
-- Marco Alvarado
-- Luiz Ruiz
-
-[Team profile on NASA Space Apps](https://www.spaceappschallenge.org/2026/find-a-team/printnombre_del_equipo/)
-
-Project Presentation (https://www.canva.com/design/DAHa7y80PRY/D-VR3uL69IYG2SafyVAtRw/edit)
+[NASA Space Apps team profile](https://www.spaceappschallenge.org/2026/find-a-team/printnombre_del_equipo/) · [Project presentation](docs/NOMAD-Project-Demonstration.pdf)
