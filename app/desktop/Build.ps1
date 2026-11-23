@@ -59,7 +59,7 @@ if (Test-Path -LiteralPath $references -PathType Container) {
     $starter = Join-Path $ui 'starter-library'
     $passages = Join-Path $starter 'files'
     New-Item -ItemType Directory -Path $passages -Force | Out-Null
-    $entries = @(Get-ChildItem -LiteralPath $references -File -Filter '*.md' | Sort-Object Name | ForEach-Object {
+    $entries = @(Get-ChildItem -LiteralPath $references -File -Filter '*.md' | Where-Object Name -ne 'README.md' | Sort-Object Name | ForEach-Object {
         $digest = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
         Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $passages "$digest.md") -Force
         @{path=$_.Name; hash=$digest}

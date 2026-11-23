@@ -25,7 +25,7 @@ The Moon demo uses **Mateo Ruiz** with `LunarDemo26`. For Windows requirements, 
 2. Select **ACLS algorithm** to jump to PDF page 117. Select **CPR** for the separate section on page 145.
 3. Use **Open original PDF** to inspect the source page and its layout.
 
-The 2001 manual is a historical reference. For operational use, follow the approved checklist for the current mission and the crew medical officer. [Document reader](APP-GUIDE.md#document-reader) · [Source catalog](SOURCES.md)
+The 2001 manual is a historical reference. For operational use, follow the approved checklist for the current mission and the crew medical officer. [Document reader](APP-GUIDE.md#document-reader) · [Source catalog](../references/README.md)
 
 ## 4. Try another daily task
 

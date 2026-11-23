@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const markdownRoot = 'Investigation (.md)';
 const pdfRoot = 'investigation';
 const starterRoot = 'references';
-const reportPath = join(root, 'docs', 'SOURCES.md');
+const reportPath = join(root, starterRoot, 'README.md');
 const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 const compare = (a, b) => collator.compare(a, b) || (a === b ? 0 : a < b ? -1 : 1);
 
@@ -62,8 +62,8 @@ function markdownLabel(label) {
 }
 
 function projectLink(label, path) {
-  const fromDocs = relative(dirname(reportPath), join(root, path)).split(sep);
-  const url = fromDocs.map(part => encodeURIComponent(part).replace(/[!'()*]/g,
+  const fromCatalog = relative(dirname(reportPath), join(root, path)).split(sep);
+  const url = fromCatalog.map(part => encodeURIComponent(part).replace(/[!'()*]/g,
     character => '%' + character.charCodeAt(0).toString(16).toUpperCase())).join('/');
   return '[' + markdownLabel(label) + '](' + url + ')';
 }
@@ -121,12 +121,12 @@ const lines = [
   '- The **2015 ISS medical kit reference** is the source for the Medical Supplies catalog. [Markdown](../Investigation%20%28.md%29/First%20Aid/medical_kit_checklist_-_full_release.md) · [Original PDF](../investigation/First%20Aid/medical_kit_checklist_-_full_release.pdf)',
   '- The **European Resuscitation Council 2025 Special Circumstances guidelines** include a microgravity section. [Original, PDF page 43](https://www.erc.edu/media/wwufbysp/gl2025-06-spec-circ-e.pdf#page=43) · [NOMAD summary](../Investigation%20%28.md%29/First%20Aid/ERC-2025-Special-Circumstances.md)',
   '- Hinkelbein et al. (2020) published the DGLRM and ESAM-SMG guideline for CPR in microgravity. Menon et al. (2025) reported the Polaris Dawn study of CPR techniques in the Dragon spacecraft. [DGLRM and ESAM-SMG guideline](https://doi.org/10.1186/s13049-020-00793-y) · [Polaris Dawn study](https://doi.org/10.1177/10806032251346746)',
-  '- NASA’s **Human Research Program** describes the mission hazards behind the prototype. Its OCHMO briefs cover human system standards and health countermeasures. See the separate NASA guide for the project’s sources by hazard and physiology topic. [NASA Human Research Program](https://www.nasa.gov/hrp/hazards/) · [NASA technical and medical briefs](https://www.nasa.gov/ochmo/hsa-standards/ochmo-technical-briefs/) · [NOMAD’s NASA reference guide](NASA-DATA.md)',
+  '- NASA’s **Human Research Program** describes the mission hazards behind the prototype. Its OCHMO briefs cover human system standards and health countermeasures. See the separate NASA guide for the project’s sources by hazard and physiology topic. [NASA Human Research Program](https://www.nasa.gov/hrp/hazards/) · [NASA technical and medical briefs](https://www.nasa.gov/ochmo/hsa-standards/ochmo-technical-briefs/) · [NOMAD’s NASA reference guide](nasa/)',
   '- The **National Institute of Mental Health** brochures and fact sheets are cited individually in the mission library. [NIMH publications](https://www.nimh.nih.gov/health/publications)',
   '',
   '## Project and software credits',
   '',
-  '- The project addresses the 2026 NASA Space Apps **Health Monitoring Software** challenge. [Challenge brief](https://www.spaceappschallenge.org/2026/challenges/health-monitoring-software/) · [NOMAD project presentation](NOMAD-Project-Demonstration.pdf)',
+  '- The project addresses the 2026 NASA Space Apps **Health Monitoring Software** challenge. [Challenge brief](https://www.spaceappschallenge.org/2026/challenges/health-monitoring-software/) · [NOMAD project presentation](../docs/NOMAD-Project-Demonstration.pdf)',
   '- The Earth-at-sunrise background comes from the ISS Crew Earth Observations Facility and the Earth Science and Remote Sensing Unit at NASA Johnson Space Center. The character Ham is inspired by the chimpanzee who flew on Mercury-Redstone 2. [NASA Earth Observatory image](https://science.nasa.gov/earth/earth-observatory/sunrise-from-the-station-152259/) · [NASA Ham archive](https://www.nasa.gov/image-article/chimpanzee-ham-with-trainers/)',
   '- NOMAD uses Google’s MedGemma and Alibaba Cloud’s Qwen through Ollama. The app uses Microsoft WebView2 and the imported Markdown credits Microsoft MarkItDown for conversion. [MedGemma 1.5](https://ollama.com/library/medgemma1.5:4b) · [Qwen3](https://ollama.com/library/qwen3) · [Qwen3 Embedding](https://ollama.com/library/qwen3-embedding) · [Ollama](https://ollama.com/) · [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) · [MarkItDown](https://github.com/microsoft/markitdown)',
   '',

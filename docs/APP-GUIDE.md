@@ -142,7 +142,7 @@ Enter the medication, the amount actually taken and the time. Add inventory use 
 
 ### Medical supplies
 
-Open **Medical Supplies** in Health or **View inventory** in Medications. Search the historical catalog and edit stock after verifying the amount on board. The catalog comes from the [2015 ISS kit reference](SOURCES.md#start-with-these-references).
+Open **Medical Supplies** in Health or **View inventory** in Medications. Search the historical catalog and edit stock after verifying the amount on board. The catalog comes from the [2015 ISS kit reference](../references/README.md#start-with-these-references).
 
 [![Medical Supplies inventory dialog over the demo Home screen](images/app/21-medical-supplies.jpg)](images/app/21-medical-supplies.jpg)
 
@@ -154,7 +154,7 @@ Search the bundled references, choose **Exercise research** to filter them or us
 
 ### Document reader
 
-Enter a **PDF page** number and select **Go**, use the previous and next controls or select a shortcut such as **ACLS algorithm**, **CPR** or **Fractures**. Use **Open original PDF** when a bundled original is available. The historical ISS manual’s ACLS algorithm starts on PDF page 117 and its CPR section starts on page 145. [Sources](SOURCES.md#start-with-these-references)
+Enter a **PDF page** number and select **Go**, use the previous and next controls or select a shortcut such as **ACLS algorithm**, **CPR** or **Fractures**. Use **Open original PDF** when a bundled original is available. The historical ISS manual’s ACLS algorithm starts on PDF page 117 and its CPR section starts on page 145. [Sources](../references/README.md#start-with-these-references)
 
 [![Historical ISS checklist in the reader at PDF page 117](images/app/20-document-reader.jpg)](images/app/20-document-reader.jpg)
 
@@ -184,4 +184,4 @@ Use **Report issue** from a Developer profile while the issue is visible. Review
 
 [![Developer report popup showing a captured app screenshot and report fields](images/app/25-developer-report.jpg)](images/app/25-developer-report.jpg)
 
-[Quick-start tutorial](QUICKSTART.md) · [Windows installation](INSTALLATION.md) · [Sources](SOURCES.md)
+[Quick-start tutorial](QUICKSTART.md) · [Windows installation](INSTALLATION.md) · [Sources](../references/README.md)

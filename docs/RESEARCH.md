@@ -11,7 +11,7 @@ NOMAD v3.2.3 indexes **569 Markdown references**, including the ISS medical kit,
 | specific situations | [75](../investigation/specific%20situations/) | [119](../Investigation%20%28.md%29/specific%20situations/) |
 | Standards and Requirements | [3](../investigation/Standards%20and%20Requirements/) | [3](../Investigation%20%28.md%29/Standards%20and%20Requirements/) |
 
-The [source catalog](SOURCES.md) lists every indexed document and every repository PDF, including the ISS medical checklist and its CPR references. It links the Markdown, original PDF and recorded publisher URL or collection copy where available.
+The [source catalog](../references/README.md) lists every indexed document and every repository PDF, including the ISS medical checklist and its CPR references. It links the Markdown, original PDF and recorded publisher URL or collection copy where available.
 
 ## Use the documents in NETIN
 
